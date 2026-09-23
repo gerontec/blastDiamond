@@ -1,0 +1,128 @@
+From 7f9da4c9d1648f131e40811e75947d6e3f93cc23 Mon Sep 17 00:00:00 2001
+From: Gerontec <gh@heissa.de>
+Date: Wed, 23 Sep 2026 15:16:17 +0200
+Subject: [PATCH 1/2] makedb: write the sequence offset table to disk while
+ building
+
+The offset table (16 bytes per sequence) was collected in a std::vector and
+written out only at the end of the build. For NCBI nr (1.15 billion sequences)
+the vector reallocated at 2^30 entries and needed about 51 GB at that moment,
+so the build was killed by the OOM killer on a 64 GB machine.
+
+During the build the table is append-only, and it is read back exactly once,
+sequentially, when the trailer is written - so it does not have to be in
+memory. PosSpill buffers 2^20 entries and streams them to <database>.pos_tmp;
+copy_to() appends that file to the database and removes it, discard() removes
+it when the build fails. Format and order of the entries are unchanged.
+
+Verified on a 2.5 million sequence subset of nr: the resulting .dmnd is
+byte-identical to the one produced by the unpatched makedb.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ src/legacy/dmnd/dmnd.cpp | 61 +++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 54 insertions(+), 7 deletions(-)
+
+diff --git a/src/legacy/dmnd/dmnd.cpp b/src/legacy/dmnd/dmnd.cpp
+index c4ac01b..5b91afa 100644
+--- a/src/legacy/dmnd/dmnd.cpp
++++ b/src/legacy/dmnd/dmnd.cpp
+@@ -214,7 +214,45 @@ bool DatabaseFile::has_taxon_scientific_names() const {
+ 	return header2.taxon_names_offset != 0;
+ }
+ 
+-static void push_seq(const Sequence &seq, const char *id, size_t id_len, uint64_t &offset, vector<SequenceFile::SeqInfo> &pos_array, File &out, size_t &letters, size_t &n_seqs)
++static void copy_bytes(File& src, File& dst, uint64_t n);
++
++// Spill the offset table to disk while building instead of holding it in RAM. The table is written
++// once, sequentially, at the end of the build, so it never needs random access. For NCBI nr
++// (1.15 billion sequences, 16 bytes per entry) the vector doubled its capacity at 2^30 entries and
++// briefly needed about 51 GB, which ended the build in the OOM killer. Same format, same order.
++struct PosSpill {
++	static const size_t BUF = 1 << 20;
++	PosSpill(const string& path) : path(path), file(new File(path, "wb")) { buf.reserve(BUF); }
++	void emplace_back(uint64_t pos, size_t len) {
++		buf.emplace_back(pos, len);
++		if (buf.size() == BUF)
++			flush();
++	}
++	void flush() {
++		for (const SequenceFile::SeqInfo& r : buf)
++			serialize(*file, r);
++		n += buf.size();
++		buf.clear();
++	}
++	void copy_to(File& out) {
++		flush();
++		file->close();
++		File in(path, "rb");
++		copy_bytes(in, out, n * SequenceFile::SeqInfo::SIZE);
++		in.close();
++		remove(path.c_str());
++	}
++	void discard() {
++		file->close();
++		remove(path.c_str());
++	}
++	const string path;
++	unique_ptr<File> file;
++	vector<SequenceFile::SeqInfo> buf;
++	uint64_t n = 0;
++};
++
++static void push_seq(const Sequence &seq, const char *id, size_t id_len, uint64_t &offset, PosSpill &pos_array, File &out, size_t &letters, size_t &n_seqs)
+ {
+ 	pos_array.emplace_back(offset, seq.length());
+ 	out.write("\xff", 1);
+@@ -226,6 +264,17 @@ static void push_seq(const Sequence &seq, const char *id, size_t id_len, uint64_
+ 	offset += seq.length() + id_len + 3;
+ }
+ 
++static void copy_bytes(File& src, File& dst, uint64_t n)
++{
++	vector<char> buf(64 * MEGABYTES);
++	while (n > 0) {
++		const size_t k = (size_t)std::min<uint64_t>(n, buf.size());
++		src.read(buf.data(), k);
++		dst.write(buf.data(), k);
++		n -= k;
++	}
++}
++
+ void DatabaseFile::make_db()
+ {
+ 	config.file_buffer_size = 4 * MEGABYTES;
+@@ -260,7 +309,7 @@ void DatabaseFile::make_db()
+     }
+ 
+     Block* block;
+-	vector<SeqInfo> pos_array;
++	PosSpill pos_array(config.database + ".pos_tmp");
+ 	ExternalSorter<pair<string, OId>> accessions;
+ 	Util::Seq::AccessionParsing acc_stats;
+ 	try {
+@@ -305,6 +354,7 @@ void DatabaseFile::make_db()
+ 	}
+ 	catch (std::exception&) {
+ 		out->close();
++		pos_array.discard();
+ 		remove(out->name().c_str());
+ 		throw;
+ 	}
+@@ -313,11 +363,8 @@ void DatabaseFile::make_db()
+ 
+ 	timer.go("Writing trailer");
+ 	header.pos_array_offset = offset;
+-	pos_array.emplace_back(offset, 0);
+-	for (const SeqInfo& r : pos_array)
+-		serialize(*out, r);
+-	pos_array.clear();
+-	pos_array.shrink_to_fit();
++	pos_array.copy_to(*out);
++	serialize(*out, SeqInfo(offset, 0));      // terminating entry, as before
+ 	timer.finish();
+ 
+ 	if (!config.prot_accession2taxid.empty() && !config.no_parse_seqids)
+-- 
+2.53.0
+

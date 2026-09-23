@@ -1,0 +1,6 @@
+cuda-version 11.8.*
+cudatoolkit 11.8.*
+openmm <8.3
+pytorch 2.5.1 cuda118*
+libtorch 2.5.1 cuda118*
+numpy 1.26.*

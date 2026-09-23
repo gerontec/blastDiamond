@@ -1,0 +1,18 @@
+[Unit]
+Description=AmyloDeep-Auftraege der API (amyl_job), Modelle bleiben auf der Tesla P4
+After=mariadb.service
+
+[Service]
+User=gh
+WorkingDirectory=/home/gh/iver_sim/ol_amyloid
+# Env iver: CUDA 11.8 + PyTorch 2.5.1 (sm_61), siehe conda-meta/pinned
+ExecStart=/home/gh/iver_sim/mamba/envs/iver/bin/python /home/gh/iver_sim/ol_amyloid/amylo_api_worker.py
+Nice=5
+IOSchedulingClass=best-effort
+Restart=always
+RestartSec=30
+StandardOutput=append:/home/gh/iver_sim/ol_amyloid/amylo_api_worker.log
+StandardError=append:/home/gh/iver_sim/ol_amyloid/amylo_api_worker.log
+
+[Install]
+WantedBy=multi-user.target
