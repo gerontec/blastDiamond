@@ -1290,6 +1290,12 @@ PY=~/iver_sim/mamba/envs/iver/bin/python
 $PY amylo_gpu.py --import-tsv kontrolle.tsv --rolle kontrolle    # Kandidaten anlegen (acc, kurz, name)
 $PY amylo_gpu.py --kandidaten amyloid --bemerkung "43 amyloid candidates"
 $PY amylo_gpu.py --acc YP_009724390.1 -w 10
+""", """
+cd ~/iver_sim/ol_amyloid
+PY=~/iver_sim/mamba/envs/iver/bin/python
+$PY amylo_gpu.py --import-tsv kontrolle.tsv --rolle kontrolle    # create candidates (acc, short name, name)
+$PY amylo_gpu.py --kandidaten amyloid --bemerkung "43 amyloid candidates"
+$PY amylo_gpu.py --acc YP_009724390.1 -w 10
 """)
 
     d.h2("Tabellen in wagodb (Präfix `amyl_`)", "Tables in wagodb (prefix `amyl_`)")
@@ -1415,6 +1421,18 @@ $PY amylo_gpu.py --acc YP_009724390.1 -w 10
 python3 spike_amyloid_test.py --vorbereiten --n-kontrollen 300 --seed 42
 
 # Auftrag ueber die API (Abschnitt 8.5) - kein SSH, kein Modell-Laden
+curl -X POST -H "X-Api-Key: $K" -H 'Content-Type: application/json' \\
+  -d '{"acc":"YP_009724390.1","window":10}' \\
+  'https://yt.heissa.de/blast/api.php?r=amylo'
+  -> {"job_id":"0f478cae...","status":"queued","position":1,"url":"...r=amylojob&id=..."}
+
+curl 'https://yt.heissa.de/blast/api.php?r=amylojob&id=0f478cae...'
+python3 spike_amyloid_test.py --auswerten
+""", """
+# create the candidate and 300 SwissProt controls
+python3 spike_amyloid_test.py --vorbereiten --n-kontrollen 300 --seed 42
+
+# job via the API (section 8.5) - no SSH, no model loading
 curl -X POST -H "X-Api-Key: $K" -H 'Content-Type: application/json' \\
   -d '{"acc":"YP_009724390.1","window":10}' \\
   'https://yt.heissa.de/blast/api.php?r=amylo'
