@@ -942,17 +942,26 @@ WHERE a.acc = 'YP_009724390.1';
     d.p("**Suchparameter** (Formular oder JSON): `seq` (FASTA oder rohe Sequenz, bis 50 Sequenzen / 100.000 "
         "Buchstaben) **oder** `acc` (Accession aus nr, optional mit `range` von-bis, nur blastp; siehe 7.7), "
         "`mode` blastp oder blastx, `taxonlist` (bis 20 TaxIDs samt Untertaxa, z.B. 4751 = Fungi, 9606 = Mensch), "
-        "`len_min`/`len_max` (Länge der Treffersequenz), `neu_tage` (bei NCBI angelegt in den letzten N Tagen), "
+        "`len_min`/`len_max` (Länge der Treffersequenz), `new_days` (bei NCBI angelegt in den letzten N Tagen), "
         "`evalue` (Standard 0,001), `max_target_seqs` (1–500, Standard 25), `sensitivity` fast bis "
-        "ultra-sensitive (Standard sensitive). Das Ergebnis enthält zusätzlich `vorauswahl`, `block_size`, "
-        "`ram_schaetz_gb`, `ram_gb` (gemessen) und `ram_frei_gb`.",
+        "ultra-sensitive (Standard sensitive). Das Ergebnis enthält zusätzlich `preselect`, `block_size`, "
+        "`ram_est_gb`, `ram_gb` (gemessen) und `ram_free_gb`.",
         "**Search parameters** (form or JSON): `seq` (FASTA or raw sequence, up to 50 sequences / 100,000 "
         "letters) **or** `acc` (accession from nr, optionally with `range` from-to, blastp only; see 7.7), "
         "`mode` blastp or blastx, `taxonlist` (up to 20 TaxIDs including sub-taxa, e.g. 4751 = fungi, 9606 = "
-        "human), `len_min`/`len_max` (length of the hit sequence), `neu_tage` (created at NCBI within the last N "
+        "human), `len_min`/`len_max` (length of the hit sequence), `new_days` (created at NCBI within the last N "
         "days), `evalue` (default 0.001), `max_target_seqs` (1–500, default 25), `sensitivity` fast to "
-        "ultra-sensitive (default sensitive). The result additionally contains `vorauswahl`, `block_size`, "
-        "`ram_schaetz_gb`, `ram_gb` (measured) and `ram_frei_gb`.")
+        "ultra-sensitive (default sensitive). The result additionally contains `preselect`, `block_size`, "
+        "`ram_est_gb`, `ram_gb` (measured) and `ram_free_gb`.")
+    d.p("**Sprache (seit 30.09.2026):** Antworten, Feldnamen und Fehlermeldungen der API sind englisch "
+        "(`endpoints`, `daily_deltas`, `ready`, `sequence`, `lineage`, `created`/`started`/`finished`, `result`, "
+        "`windows` …). Die früheren deutschen Parameter `neu_tage` und `von`/`bis` werden weiter angenommen "
+        "(heute `new_days`, `from`/`to`); die Datenbankspalten behalten ihre Namen und bekommen in den Abfragen "
+        "englische Aliase.",
+        "**Language (since 2026-09-30):** responses, field names and error messages of the API are English "
+        "(`endpoints`, `daily_deltas`, `ready`, `sequence`, `lineage`, `created`/`started`/`finished`, `result`, "
+        "`windows` …). The former German parameters `neu_tage` and `von`/`bis` are still accepted (now "
+        "`new_days`, `from`/`to`); the database columns keep their names and get English aliases in the queries.")
     d.code("""
 curl -X POST -H 'X-Api-Key: …' -H 'Content-Type: application/json' \\
   -d '{"seq":">q1\\nMKT…","mode":"blastp","taxonlist":"9606"}' \\
@@ -993,56 +1002,56 @@ curl 'https://yt.heissa.de/blast/api.php?r=job&id=18a8ceae9fcc7d63063e5ffc'
                            "hits in DIAMOND format 6 (qseqid … bitscore, staxids)")],
         ["blast_api_hits", ("Zähler je IP bzw. IPv6-/64 und Minute (Ratenbegrenzung), vom Worker aufgeräumt",
                             "counter per IP or IPv6 /64 and minute (rate limit), cleaned up by the worker")],
-        ["blast_ram_mess", ("Spitzen-RSS jeder Suche (Modus, Sensitivität, Anfrage- und DB-Reste, block_size, "
+        ["blast_ram_log", ("Spitzen-RSS jeder Suche (Modus, Sensitivität, Anfrage- und DB-Reste, block_size, "
                             "Schätzung, freier Speicher) – Grundlage der RAM-Schätzung",
                             "peak RSS of every search (mode, sensitivity, query and DB letters, block_size, "
                             "estimate, free memory) – basis of the memory estimate")],
-        ["blast_ram_status", ("eine Zeile: MemAvailable, MemTotal, SwapFree; vom Worker alle 30 s geschrieben",
+        ["blast_ram_status", ("eine Zeile: free_gb (MemAvailable), total_gb, swap_free_gb; vom Worker alle 30 s geschrieben",
                               "one row: MemAvailable, MemTotal, SwapFree; written by the worker every 30 s")],
     ], [3.3, 13.7])
     d.bild("api", "ER-Diagramm der API (grau: Tabellen aus Abschnitt 6, nur verknüpfte Spalten), erzeugt aus dem Live-Schema (information_schema). Durchgezogen: deklarierte Fremdschlüssel, gestrichelt: logische Verknüpfungen; Krähenfuß = viele. PK/UK/IX/FK wie in der Datenbank.",
            "ER diagram of the API (grey: tables from section 6, linked columns only), generated from the live schema (information_schema). Solid: declared foreign keys, dashed: logical links; crow's foot = many. PK/UK/IX/FK as in the database.")
 
-    d.h2("Vorauswahl über MariaDB (`dmnd_vorauswahl.py`)", "Pre-selection via MariaDB (`dmnd_vorauswahl.py`)")
+    d.h2("Vorauswahl über MariaDB (`dmnd_preselect.py`)", "Pre-selection via MariaDB (`dmnd_preselect.py`)")
     d.p("Die .dmnd hat außer der Offset-Tabelle (16 Byte je Sequenz, `pos_array_offset`) keinen Index; einen "
         "Seed-Index (`diamond makeidx`, `.seed_idx`) erlaubt DIAMOND nur bis 100 Mio. Reste (`MAX_LETTERS` in "
         "`data/index.cpp`), die nr hat 436 Mrd. Jede Suche baut die Seeds daher neu und liest die ganze Datei – "
         "auch mit `--taxonlist`. Schneller wird sie nur, wenn weniger Sequenzen durchsucht werden: Sind `taxonlist`, "
-        "`len_min`/`len_max` oder `neu_tage` gesetzt, bestimmt MariaDB die OIDs (Taxon samt Untertaxa per "
+        "`len_min`/`len_max` oder `new_days` gesetzt, bestimmt MariaDB die OIDs (Taxon samt Untertaxa per "
         "rekursiver CTE über `blast_taxon.parent` und `blast_acc.idx_taxid`; Länge über `blast_seq`; Anlagedatum "
         "über `blast_seq_ncbi.createdate`), `dmnd_getseq.Dmnd` holt die Sätze über die Offset-Tabelle, und "
-        "`diamond makedb` baut daraus eine Teil-.dmnd in `~/diamond/vorauswahl` (Cache 2 Tage, Schlüssel = "
+        "`diamond makedb` baut daraus eine Teil-.dmnd in `~/diamond/preselect` (Cache 2 Tage, Schlüssel = "
         "Kriterien + dmnd_hash). Gesucht wird mit `--dbsize` = Reste der vollen nr, damit die E-Werte mit einer "
         "Vollsuche vergleichbar bleiben; die Taxa der Treffer trägt der Worker aus `blast_acc` nach. Über 50 Mio. "
-        "Sequenzen (`VORAUSWAHL_MAX_SEQ`) lohnt die Teil-.dmnd nicht mehr: dann Vollsuche mit `--taxonlist` und "
+        "Sequenzen (`PRESELECT_MAX_SEQ`) lohnt die Teil-.dmnd nicht mehr: dann Vollsuche mit `--taxonlist` und "
         "Nachfilter auf Länge/Datum.",
         "Apart from the offset table (16 bytes per sequence, `pos_array_offset`) the .dmnd has no index; DIAMOND "
         "allows a seed index (`diamond makeidx`, `.seed_idx`) only up to 100 million letters (`MAX_LETTERS` in "
         "`data/index.cpp`), nr has 436 billion. Every search therefore builds the seeds anew and reads the whole "
         "file – even with `--taxonlist`. It only gets faster when fewer sequences are searched: if `taxonlist`, "
-        "`len_min`/`len_max` or `neu_tage` is set, MariaDB determines the OIDs (taxon including sub-taxa via a "
+        "`len_min`/`len_max` or `new_days` is set, MariaDB determines the OIDs (taxon including sub-taxa via a "
         "recursive CTE over `blast_taxon.parent` and `blast_acc.idx_taxid`; length via `blast_seq`; creation "
         "date via `blast_seq_ncbi.createdate`), `dmnd_getseq.Dmnd` reads the records via the offset table, and "
-        "`diamond makedb` builds a sub-.dmnd in `~/diamond/vorauswahl` (cached 2 days, key = criteria + "
+        "`diamond makedb` builds a sub-.dmnd in `~/diamond/preselect` (cached 2 days, key = criteria + "
         "dmnd_hash). The search uses `--dbsize` = letters of the full nr so that E-values stay comparable with a "
         "full search; the worker adds the hits' taxa from `blast_acc`. Above 50 million sequences "
-        "(`VORAUSWAHL_MAX_SEQ`) the sub-.dmnd no longer pays off: then a full search with `--taxonlist` and a "
+        "(`PRESELECT_MAX_SEQ`) the sub-.dmnd no longer pays off: then a full search with `--taxonlist` and a "
         "post-filter on length/date.")
     d.tabelle([("Vorauswahl", "Pre-selection"), ("Sequenzen", "Sequences"), ("Aufbau", "Build"),
                ("Suche TTR 20–70", "Search TTR 20–70")], [
         [("keine (volle nr)", "none (full nr)"), "1.156.964.465", "–", ("895 s (fast, -b 2)", "895 s (fast, -b 2)")],
-        [("neu_tage=90", "neu_tage=90"), "2.543.725", "31 s", ("1,8 s fast / 12,9 s sensitive", "1.8 s fast / 12.9 s sensitive")],
-        [("neu_tage=4", "neu_tage=4"), "71.699", "1,0 s", "–"],
+        [("new_days=90", "new_days=90"), "2.543.725", "31 s", ("1,8 s fast / 12,9 s sensitive", "1.8 s fast / 12.9 s sensitive")],
+        [("new_days=4", "new_days=4"), "71.699", "1,0 s", "–"],
     ], [4, 3.2, 2, 5])
     d.p("**Grenze des Datumsfilters:** `createdate` gibt es nur für die per Tagesdelta angehängten Sequenzen "
         "(ab 16.09.2026) – für die 1,15 Mrd. Sequenzen des nr-Stands nicht, und die BLAST-Datenbank selbst trägt "
-        "kein Datum je Sequenz. Nachfüllen für den nr-Stand: `blast_ncbi_nachfuellen.py` liest die "
+        "kein Datum je Sequenz. Nachfüllen für den nr-Stand: `blast_ncbi_backfill.py` liest die "
         "GenBank-Tagesdateien ab 02.07.2026 (3,25 Mio. OIDs des nr-Stands), danach holt "
         "`blast_createdate_fill.py --von-vorn` das Anlagedatum per esummary. RefSeq-Tagesdateien reichen nur "
         "~4 Wochen zurück.",
         "**Limit of the date filter:** `createdate` exists only for sequences appended by the daily delta (from "
         "2026-09-16) – not for the 1.15 billion sequences of the nr release, and the BLAST database itself holds "
-        "no per-sequence date. Backfill for the nr release: `blast_ncbi_nachfuellen.py` reads the GenBank daily "
+        "no per-sequence date. Backfill for the nr release: `blast_ncbi_backfill.py` reads the GenBank daily "
         "files from 2026-07-02 (3.25 million OIDs of the nr release), then `blast_createdate_fill.py --von-vorn` "
         "fetches the creation date via esummary. RefSeq daily files only go back ~4 weeks.")
 
@@ -1061,19 +1070,19 @@ curl 'https://yt.heissa.de/blast/api.php?r=job&id=18a8ceae9fcc7d63063e5ffc'
         ("Grenze = min(48 GB, MemAvailable - 4 GB Reserve), direkt vor dem Start aus `/proc/meminfo`.",
          "limit = min(48 GB, MemAvailable - 4 GB reserve), read from `/proc/meminfo` right before the start."),
         ("Bedarf = 0,5 GB + k · min(Reste der DB, b) (in Mrd. Resten). k (GB je Mrd. Reste) = größter Messwert in "
-         "`blast_ram_mess` bei gleichem Modus und gleicher Sensitivität mit Anfrage im Bereich q/4…4q, sonst aus "
+         "`blast_ram_log` bei gleichem Modus und gleicher Sensitivität mit Anfrage im Bereich q/4…4q, sonst aus "
          "größeren Anfragen, sonst Startwert; plus 20 % Sicherheit.",
          "need = 0.5 GB + k · min(DB letters, b) (in billions). k (GB per billion letters) = largest measured "
-         "value in `blast_ram_mess` with the same mode and sensitivity and a query within q/4…4q, else from larger "
+         "value in `blast_ram_log` with the same mode and sensitivity and a query within q/4…4q, else from larger "
          "queries, else a start value; plus 20 % margin."),
         ("b = größte Stufe aus 2 / 1 / 0,5 / 0,25 / 0,1, deren Bedarf unter die Grenze passt (weniger Blöcke = "
          "schneller). Passt keine, wartet der Worker bis 30 min auf freien Speicher, dann Fehler.",
          "b = the largest step of 2 / 1 / 0.5 / 0.25 / 0.1 whose need fits under the limit (fewer blocks = "
          "faster). If none fits, the worker waits up to 30 min for free memory, then fails."),
         ("DIAMOND läuft unter `/usr/bin/time -f %M`; das Spitzen-RSS geht mit Schätzung und freiem Speicher in "
-         "`blast_ram_mess` und in den Auftrag (`ram_gb`). Jede Suche macht die nächste Schätzung genauer.",
+         "`blast_ram_log` und in den Auftrag (`ram_gb`). Jede Suche macht die nächste Schätzung genauer.",
          "DIAMOND runs under `/usr/bin/time -f %M`; the peak RSS goes, with estimate and free memory, into "
-         "`blast_ram_mess` and into the job (`ram_gb`). Every search improves the next estimate."),
+         "`blast_ram_log` and into the job (`ram_gb`). Every search improves the next estimate."),
     ])
     d.p("Startwerte k: fast 1,5, sensitive 3, mid-sensitive 3, more-sensitive 5, very-sensitive 8, "
         "ultra-sensitive 12; ×2 bei Anfragen über 5.000 Reste und bei blastx. fast und sensitive stammen aus "
@@ -1089,28 +1098,28 @@ curl 'https://yt.heissa.de/blast/api.php?r=job&id=18a8ceae9fcc7d63063e5ffc'
         "32 GB of swap on the NVMe (`/swapfile`, `vm.swappiness=10`) as a buffer against OOM kills.")
 
     d.p("**Test (30.09.2026, extern über heissa.de):** SARS-CoV-2-Spike YP_009724390.1 als S1 (Rest 14–685) und "
-        "S2 (686–1273), 1.260 aa, `ultra-sensitive`, `neu_tage=100`. Vorauswahl 2.544.520 Sequenzen / 1,08 Mrd. "
+        "S2 (686–1273), 1.260 aa, `ultra-sensitive`, `new_days=100`. Vorauswahl 2.544.520 Sequenzen / 1,08 Mrd. "
         "Reste in 37,3 s (OIDs 5,5 s, Sätze 27,5 s, makedb 4,3 s), Suche 46 s, Auftrag gesamt 113,8 s. RAM: frei "
         "52,3 GB, Schätzung 16,1 GB (Startwert), gemessen 1,88 GB bei `--block-size 2` – k = 1,27 GB je Mrd. Reste "
-        "steht seitdem als Messwert in `blast_ram_mess`. Ohne Trefferobergrenze (direkt auf dem dell, 57,6 s): S1 506 "
+        "steht seitdem als Messwert in `blast_ram_log`. Ohne Trefferobergrenze (direkt auf dem dell, 57,6 s): S1 506 "
         "Treffer (265 ≥ 90 % Identität), S2 510 Treffer (382 ≥ 90 %).",
         "**Test (2026-09-30, external via heissa.de):** SARS-CoV-2 spike YP_009724390.1 as S1 (residues 14–685) "
-        "and S2 (686–1273), 1,260 aa, `ultra-sensitive`, `neu_tage=100`. Pre-selection 2,544,520 sequences / "
+        "and S2 (686–1273), 1,260 aa, `ultra-sensitive`, `new_days=100`. Pre-selection 2,544,520 sequences / "
         "1.08 billion letters in 37.3 s (OIDs 5.5 s, records 27.5 s, makedb 4.3 s), search 46 s, job total "
         "113.8 s. Memory: 52.3 GB free, estimate 16.1 GB (start value), measured 1.88 GB at `--block-size 2` – "
-        "k = 1.27 GB per billion letters is stored in `blast_ram_mess` since. Without a hit limit (directly on the "
+        "k = 1.27 GB per billion letters is stored in `blast_ram_log` since. Without a hit limit (directly on the "
         "dell, 57.6 s): S1 506 hits (265 ≥ 90 % identity), S2 510 hits (382 ≥ 90 %).")
 
     d.h2("Schutz", "Protection")
     d.p("Eigener MariaDB-Benutzer `blast_api`: nur SELECT auf die Metadaten-Tabellen und Views, INSERT nur auf "
-        "blast_job, INSERT/UPDATE nur auf blast_api_hits, SELECT auf blast_ram_mess/blast_ram_status; Zugangsdaten in `/etc/blast_api.ini` (root:www-data, "
+        "blast_job, INSERT/UPDATE nur auf blast_api_hits, SELECT auf blast_ram_log/blast_ram_status; Zugangsdaten in `/etc/blast_api.ini` (root:www-data, "
         "640). Alle Abfragen mit Prepared Statements, Eingaben per Muster geprüft; `nr_seq.py` wird ohne Shell "
         "mit geprüfter Accession/Range aufgerufen. 60 Anfragen je Minute und Client. Suchen nur mit Schlüssel, "
         "höchstens 3 offene Aufträge je Schlüssel, Tageskontingent je Schlüssel (Standard 20). Die job_id ist "
         "96 bit Zufall und zugleich die Berechtigung zum Lesen des Ergebnisses. Accession-Abfragen antworten mit "
         "503, bis der Index `idx_acc` existiert – ohne ihn wäre jede Abfrage ein Scan über 1,9 Mrd. Zeilen.",
         "Dedicated MariaDB user `blast_api`: SELECT only on the metadata tables and views, INSERT only on "
-        "blast_job, INSERT/UPDATE only on blast_api_hits, SELECT on blast_ram_mess/blast_ram_status; credentials in `/etc/blast_api.ini` (root:www-data, "
+        "blast_job, INSERT/UPDATE only on blast_api_hits, SELECT on blast_ram_log/blast_ram_status; credentials in `/etc/blast_api.ini` (root:www-data, "
         "640). All queries use prepared statements, inputs are pattern-checked; `nr_seq.py` is called without "
         "a shell and with a validated accession/range. 60 requests per minute and client. Searches only with a "
         "key, at most 3 open jobs per key, daily quota per key (default 20). The job_id is 96 random bits and "
@@ -1358,9 +1367,9 @@ $PY amylo_gpu.py --acc YP_009724390.1 -w 10
         "(4.6 GB) and processes jobs one at a time.")
     d.tabelle([("Aufruf", "Call"), ("Zugang", "Access"), ("Liefert", "Returns")], [
         ["POST ?r=amylo", "X-Api-Key",
-         ("legt einen Auftrag an: `acc` (aus nr, optional `von`/`bis`) **oder** `seq`, `window` 4–40 "
+         ("legt einen Auftrag an: `acc` (aus nr, optional `from`/`to`) **oder** `seq`, `window` 4–40 "
           "(Standard 10); Antwort 202 mit job_id und Ergebnis-URL",
-          "creates a job: `acc` (from nr, optional `von`/`bis`) **or** `seq`, `window` 4–40 (default 10); "
+          "creates a job: `acc` (from nr, optional `from`/`to`) **or** `seq`, `window` 4–40 (default 10); "
           "response 202 with job_id and result URL")],
         ["GET ?r=amylojob&id=…", ("wer die id kennt", "anyone with the id"),
          ("Status, Parameter, Laufzeit; wenn fertig Mittel, Maximum, stärkstes Fenster und alle Fensterwerte",

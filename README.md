@@ -57,9 +57,9 @@ and `dmnd_getseq` from there); on the reference machine that is `~/python`.
 | `nr_daily_delta.py` | cron 04:30 | GenBank `daily-nc` and RefSeq `daily` files since the release: drops every protein whose sequence (blake2b-64 of the residues) is already present, appends the rest in one `--append`, records each file as a release row with its NCBI date |
 | `filter_nonempty.py` | helper | drops empty sequences before `makedb` (it rejects them) |
 | `blast_createdate_fill.py` | by hand | NCBI creation date (`esummary createdate`) per sequence into `blast_seq_ncbi` |
-| `blast_ncbi_nachfuellen.py` | by hand | date backfill for sequences of the nr release from the GenBank daily files |
+| `blast_ncbi_backfill.py` | by hand | date backfill for sequences of the nr release from the GenBank daily files |
 | `dmnd_getseq.py` | library/CLI | reads records straight from the `.dmnd` through its offset table |
-| `dmnd_vorauswahl.py` | library/CLI | pre-selection: OIDs by taxon (with sub-taxa), length and creation date from MariaDB → small `.dmnd` |
+| `dmnd_preselect.py` | library/CLI | pre-selection: OIDs by taxon (with sub-taxa), length and creation date from MariaDB → small `.dmnd` |
 | `nr_seq.py` | API | residues for an accession (from the `.dmnd`, masked stretches from NCBI) |
 | `blast_api_worker.py` | systemd | runs the search queue: pre-selection, memory planning, DIAMOND, hits into MariaDB |
 | `blast_api_key.py` | by hand | `add` / `list` / `off` API keys (stored as sha256 only) |
@@ -81,7 +81,7 @@ not 47 GB).
    `~/mqtt-listener.py`, which is specific to the reference machine.
 4. Paths are environment variables with the reference machine's values as defaults: `DMND`,
    `DIAMOND_APPEND_BIN` (the patched binary), `DIAMOND_BIN`, `TAXDIR`, `WORK`, `SEQ_CACHE`,
-   `ACC_CACHE`, `NR_LOCK`, `VORAUSWAHL_DIR`, `JOB_TMP`, `JOB_THREADS`.
+   `ACC_CACHE`, `NR_LOCK`, `PRESELECT_DIR`, `PRESELECT_MAX_SEQ`, `JOB_TMP`, `JOB_THREADS`.
 5. Optional mail report after each update: `MAIL_TO`, `SMTP_HOST`, `MAIL_FROM`, `MAIL_EHLO`
    (empty `MAIL_TO` = no mail).
 6. Install `pipeline/crontab.example` and `pipeline/blast-api-worker.service`; put `api/api.php`
@@ -89,7 +89,7 @@ not 47 GB).
 
 **Memory planning.** Before each search the worker reads `MemAvailable`, sets the limit to
 min(48 GB, free − 4 GB), estimates the need as 0.5 GB + k · min(DB letters, block size) with k taken
-from the measured peak RSS of earlier searches (`blast_ram_mess`), and picks the largest
+from the measured peak RSS of earlier searches (`blast_ram_log`), and picks the largest
 `--block-size` of 2 / 1 / 0.5 / 0.25 / 0.1 that fits. Every search runs under `/usr/bin/time` and
 adds its own measurement.
 
@@ -115,13 +115,15 @@ Runtimes and a worked example (daily append, date-filtered SARS-CoV-2 S1/S2 sear
 
 `api/api.php`. Metadata endpoints are free with a per-IP rate limit; searches and GPU jobs need an
 `X-Api-Key`. Both long-running endpoints are queues: the POST returns a job id, a GET polls it.
+Responses, field names and error messages are English since 2026-09-30; the former German input
+names `neu_tage` and `von`/`bis` are still accepted as aliases of `new_days` and `from`/`to`.
 
 | Endpoint | What |
 |----------|------|
 | `GET ?r=release` | which nr release is loaded, daily deltas, readiness, free memory and measured k |
 | `GET ?r=acc&acc=…` | metadata for an accession, including identical entries and taxa |
 | `GET ?r=taxon&taxid=…` | taxon with its lineage |
-| `POST ?r=search` | DIAMOND search — `seq=…`, or `acc=…` plus optional `range=319-541`; filters `taxonlist`, `len_min`/`len_max`, `neu_tage` |
+| `POST ?r=search` | DIAMOND search — `seq=…`, or `acc=…` plus optional `range=319-541`; filters `taxonlist`, `len_min`/`len_max`, `new_days` |
 | `GET ?r=job&id=…` | search status and hits, titles and taxa joined from MariaDB |
 | `POST ?r=amylo` | amyloid propensity per window on the Tesla P4 |
 | `GET ?r=amylojob&id=…` | job status and the per-window scores |

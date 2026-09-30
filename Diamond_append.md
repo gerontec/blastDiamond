@@ -141,7 +141,7 @@ Query: SARS-CoV-2 spike (YP_009724390.1) split into S1 (residues 14–685, 672 a
 | S1 | 506 | 265 | 240 | 1 |
 | S2 | 510 | 382 | 124 | 4 |
 
-All 1,016 hits with metadata and the original subject sequences: [`examples/sars2_spike_s1s2_neu100_2026-09-30.csv`](examples/sars2_spike_s1s2_neu100_2026-09-30.csv) (query: [`examples/sars2_spike_s1s2_query.fa`](examples/sars2_spike_s1s2_query.fa)).
+All 1,016 hits with metadata and the original subject sequences: [`examples/sars2_spike_s1s2_new100_2026-09-30.csv`](examples/sars2_spike_s1s2_new100_2026-09-30.csv) (query: [`examples/sars2_spike_s1s2_query.fa`](examples/sars2_spike_s1s2_query.fa)).
 
 For comparison, a `--fast` search of a 51-residue query against all 1.16 billion sequences takes
 895 s at `--block-size 2`.
