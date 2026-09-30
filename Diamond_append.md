@@ -104,6 +104,56 @@ The resulting `.dmnd` files are **byte-identical**, including the database hash.
 A full nr build with patch 1 is running as this is written: 675 million sequences in, `diamond
 makedb` sits at **2.8 GB RSS**. The unpatched build died at 21.8 GB.
 
+## Feature sample: daily append and a date-filtered search
+
+Measured on the production database, 2026-09-30.
+
+**Appending a daily delta.** `nr_daily_delta.py` collects the GenBank and RefSeq daily files since
+the nr release, drops every protein whose sequence is already in the database (blake2b-64 hash of
+the residues), and appends the rest in one `--append` run:
+
+| Run | New sequences | Database afterwards | `makedb --append` |
+|-----|---------------|---------------------|-------------------|
+| 2026-09-27, 24 daily files | 2,763,461 | 1,156,092,762 sequences | 2 min 04 s |
+| 2026-09-30, 6 daily files | 871,703 | 1,156,964,465 sequences (489 GB) | 1 min 47 s |
+
+A full rebuild of the same database takes several hours.
+
+**Searching only what is new.** Because every appended sequence keeps its NCBI creation date in
+MariaDB, a search can be limited to recent entries: MariaDB selects the OIDs, the records are read
+straight from `nr_full.dmnd` through its offset table, and a small `.dmnd` is built from them. The
+search runs with `--dbsize` set to the letters of the full database, so E-values stay comparable
+with a search against all of nr.
+
+Query: SARS-CoV-2 spike (YP_009724390.1) split into S1 (residues 14–685, 672 aa) and S2 (686–1273,
+588 aa), `--ultra-sensitive`, E-value ≤ 0.001, only sequences created within the last 100 days:
+
+| Step | Time |
+|------|------|
+| Select OIDs in MariaDB (`createdate` within 100 days) | 5.5 s |
+| Read 2,544,520 records (1.08 billion letters) from `nr_full.dmnd` | 27.5 s |
+| `diamond makedb` of the subset | 4.3 s |
+| `diamond blastp` (`--block-size 2`, 20 threads, peak RSS 1.9 GB) | 46–58 s |
+| Whole job through the public API | 113.8 s |
+
+| Query | Hits | ≥ 90 % identity | 50–90 % | < 50 % |
+|-------|------|-----------------|---------|--------|
+| S1 | 506 | 265 | 240 | 1 |
+| S2 | 510 | 382 | 124 | 4 |
+
+For comparison, a `--fast` search of a 51-residue query against all 1.16 billion sequences takes
+895 s at `--block-size 2`.
+
+Limitation: the date is only known for sequences that came in through the daily deltas (since
+2026-09-16). The sequences of the nr release itself carry no creation date in the BLAST files;
+filling it in from NCBI is a separate step.
+
+## Upstream
+
+Pull request: https://github.com/bbuchfink/diamond/pull/991 (both patches, rebased onto current
+master). On the rebased branch, a 71,699 sequence database built in one `makedb` run and built as
+57,359 + `--append` 14,340 are byte-identical, with and without taxonomy.
+
 ## Known limitations
 
 * `--append` does not deduplicate. Appending a sequence that is already in the database gives two
