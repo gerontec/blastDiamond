@@ -1,6 +1,6 @@
 -- DDL of the BLAST/DIAMOND + AmyloDeep schema in MariaDB.
 -- Dumped from the live database on dell-3660; no data, no grants, no credentials.
--- 17 tables, 4 views.
+-- 19 tables, 4 views.
 
 -- Table: amyl_ergebnis
 CREATE TABLE `amyl_ergebnis` (
@@ -103,7 +103,11 @@ CREATE TABLE `blast_acc` (
   `pos` smallint(5) unsigned NOT NULL,
   `acc` varchar(32) NOT NULL,
   `taxid` int(10) unsigned NOT NULL,
-  PRIMARY KEY (`oid`,`pos`)
+  `acc_u` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci GENERATED ALWAYS AS (`acc`) VIRTUAL,
+  PRIMARY KEY (`oid`,`pos`),
+  KEY `idx_acc` (`acc`),
+  KEY `idx_taxid` (`taxid`),
+  KEY `idx_acc_u` (`acc_u`)
 ) ENGINE=InnoDB DEFAULT CHARSET=ascii COLLATE=ascii_general_ci ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8 COMMENT='NCBI nr: eine Zeile je Defline (zusammengefasste Eintraege haben mehrere Accessions je OID)';
 
 -- Table: blast_api_hits
@@ -156,6 +160,9 @@ CREATE TABLE `blast_job` (
   `evalue` double NOT NULL,
   `max_target_seqs` smallint(5) unsigned NOT NULL,
   `taxonlist` varchar(255) DEFAULT NULL,
+  `len_min` int(10) unsigned DEFAULT NULL,
+  `len_max` int(10) unsigned DEFAULT NULL,
+  `neu_tage` smallint(5) unsigned DEFAULT NULL COMMENT 'NCBI createdate in den letzten N Tagen',
   `query` mediumtext NOT NULL,
   `n_query` int(10) unsigned NOT NULL,
   `query_letters` int(10) unsigned NOT NULL,
@@ -166,6 +173,11 @@ CREATE TABLE `blast_job` (
   `release_id` int(10) unsigned DEFAULT NULL COMMENT 'nr-Stand, gegen den gesucht wurde',
   `dmnd_hash` char(32) DEFAULT NULL,
   `n_hits` int(10) unsigned DEFAULT NULL,
+  `vorauswahl` varchar(255) DEFAULT NULL COMMENT 'Teil-.dmnd aus dmnd_vorauswahl.py oder Rueckfall',
+  `block_size` double DEFAULT NULL COMMENT 'gewaehlte --block-size',
+  `ram_schaetz_gb` decimal(6,2) DEFAULT NULL,
+  `ram_gb` decimal(6,2) DEFAULT NULL COMMENT 'gemessenes Spitzen-RSS',
+  `ram_frei_gb` decimal(6,2) DEFAULT NULL COMMENT 'MemAvailable vor dem Start',
   `error` text DEFAULT NULL,
   PRIMARY KEY (`job_id`),
   KEY `idx_status` (`status`,`erstellt`),
@@ -191,6 +203,37 @@ CREATE TABLE `blast_job_hit` (
   `staxids` varchar(255) NOT NULL,
   PRIMARY KEY (`job_id`,`n`)
 ) ENGINE=InnoDB DEFAULT CHARSET=ascii COLLATE=ascii_general_ci COMMENT='DIAMOND-Treffer je Auftrag (outfmt 6)';
+
+-- Table: blast_ram_mess
+CREATE TABLE `blast_ram_mess` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `job_id` char(24) DEFAULT NULL COMMENT 'NULL = Messung von Hand (Block-Test u.a.)',
+  `mode` enum('blastp','blastx') NOT NULL,
+  `sensitivity` varchar(16) NOT NULL,
+  `query_letters` int(10) unsigned NOT NULL,
+  `db_letters` bigint(20) unsigned NOT NULL COMMENT 'Reste der durchsuchten .dmnd (voll oder Teil-.dmnd der Vorauswahl)',
+  `block_size` double NOT NULL COMMENT '--block-size in Mrd. Resten',
+  `eff_gletters` double NOT NULL COMMENT 'min(db_letters/1e9, block_size): Mrd. Reste im groessten Block',
+  `threads` smallint(5) unsigned NOT NULL,
+  `ram_gb` decimal(6,2) NOT NULL COMMENT 'Spitzen-RSS von diamond (/usr/bin/time %M)',
+  `schaetz_gb` decimal(6,2) DEFAULT NULL,
+  `frei_gb` decimal(6,2) DEFAULT NULL COMMENT 'MemAvailable vor dem Start',
+  `sekunden` decimal(10,1) DEFAULT NULL,
+  `ok` tinyint(1) NOT NULL DEFAULT 1,
+  `erstellt` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_sens` (`mode`,`sensitivity`,`query_letters`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci COMMENT='Spitzen-RSS der DIAMOND-Suchen, Grundlage der RAM-Schaetzung';
+
+-- Table: blast_ram_status
+CREATE TABLE `blast_ram_status` (
+  `id` tinyint(3) unsigned NOT NULL,
+  `frei_gb` decimal(6,2) NOT NULL COMMENT 'MemAvailable',
+  `gesamt_gb` decimal(6,2) NOT NULL,
+  `swap_frei_gb` decimal(6,2) NOT NULL,
+  `stand` datetime NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='Aktueller Speicherstand von dell fuer ?r=release';
 
 -- Table: blast_release
 CREATE TABLE `blast_release` (
@@ -224,8 +267,10 @@ CREATE TABLE `blast_seq` (
 CREATE TABLE `blast_seq_ncbi` (
   `oid` int(10) unsigned NOT NULL,
   `ncbi_datum` date NOT NULL COMMENT 'Datum der LOCUS-Zeile (letzte Aenderung bei NCBI)',
+  `createdate` date DEFAULT NULL COMMENT 'NCBI esummary createdate, frueheste Accession der Sequenz',
   PRIMARY KEY (`oid`),
-  KEY `idx_ncbi_datum` (`ncbi_datum`)
+  KEY `idx_ncbi_datum` (`ncbi_datum`),
+  KEY `idx_createdate` (`createdate`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='NCBI-Datum der per Tagesdelta angehaengten Sequenzen; nr-Snapshot hat keins';
 
 -- Table: blast_taxon

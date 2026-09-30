@@ -8,11 +8,13 @@ const RATE_PER_MIN = 60;
 const MAX_LETTERS = 100000;
 const MAX_RECORDS = 50;
 const MAX_OPEN_JOBS = 3;
+const RAM_MAX_GB = 48;         // wie blast_api_worker.py: Grenze = min(RAM_MAX_GB, MemAvailable - RAM_RESERVE_GB)
+const RAM_RESERVE_GB = 4;
 const AMYLO_MAX = 5000;        // Fenster = Laenge - window + 1; 5000 Reste sind ~8 min auf der P4
 const SENS = ['fast', 'mid-sensitive', 'sensitive', 'more-sensitive', 'very-sensitive', 'ultra-sensitive'];
-// Anfrage per Accession statt Sequenz: Residuen kommen aus der nr-BLAST-Datenbank (Stand der Voll-Ladung)
-const BLASTDBCMD = '/home/gh/iver_sim/mamba/envs/blast/bin/blastdbcmd';
-const BLASTDB = '/home/gh/blastdb/nr';
+// Anfrage per Accession statt Sequenz: Residuen aus der DIAMOND-nr, maskierte Bereiche (X) holt nr_seq.py bei NCBI
+const NR_SEQ_PY = '/home/gh/iver_sim/mamba/envs/iver/bin/python';
+const NR_SEQ = '/home/gh/python/nr_seq.py';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -76,6 +78,18 @@ function status(PDO $db): array
     return [$r, $idx > 0];
 }
 
+function ram_status(PDO $db): array
+{
+    // Apache sieht /proc/meminfo nicht (ProcSubset=pid): der Worker schreibt den Stand alle 30 s
+    $st = $db->query('SELECT frei_gb, gesamt_gb, swap_frei_gb, stand FROM blast_ram_status WHERE id = 1')->fetch() ?: [];
+    $frei = (float)($st['frei_gb'] ?? 0);
+    $k = $db->query('SELECT mode, sensitivity, COUNT(*) AS messungen, ROUND(MAX((ram_gb - 0.5) / eff_gletters), 2) AS gb_je_mrd_reste
+                     FROM blast_ram_mess WHERE ok = 1 AND eff_gletters >= 0.05 GROUP BY mode, sensitivity')->fetchAll();
+    return ['frei_gb' => round($frei, 1), 'gesamt_gb' => round((float)($st['gesamt_gb'] ?? 0), 1),
+            'swap_frei_gb' => round((float)($st['swap_frei_gb'] ?? 0), 1), 'stand' => $st['stand'] ?? null, 'grenze_gb' => round(min(RAM_MAX_GB, $frei - RAM_RESERVE_GB), 1),
+            'reserve_gb' => RAM_RESERVE_GB, 'max_gb' => RAM_MAX_GB, 'messwerte' => $k];
+}
+
 function taxon_names(PDO $db, array $taxids): array
 {
     $taxids = array_values(array_unique(array_filter(array_map('intval', $taxids))));
@@ -105,12 +119,16 @@ case 'help':
             'GET ?r=release' => 'geladener nr-Stand, Tagesdeltas, Bereitschaft',
             'GET ?r=acc&acc=YP_009724390.1' => 'Sequenz-Metadaten zu einer Accession (ohne .Version: neueste)',
             'GET ?r=taxon&taxid=9606 | &name=Homo sapiens' => 'Taxon mit Abstammungslinie',
-            'POST ?r=search (X-Api-Key)' => 'seq (FASTA oder rohe Sequenz) ODER acc=YP_009724390.1 [range=319-541] (Sequenz aus nr), mode=blastp|blastx, taxonlist=4751,9606, evalue=0.001, max_target_seqs=25, sensitivity=' . implode('|', SENS),
+            'POST ?r=search (X-Api-Key)' => 'seq (FASTA oder rohe Sequenz) ODER acc=YP_009724390.1 [range=319-541] (Sequenz aus nr), mode=blastp|blastx, taxonlist=4751,9606 (samt Untertaxa), len_min=100, len_max=400 (Laenge der Treffersequenz), neu_tage=90 (bei NCBI angelegt in den letzten N Tagen), evalue=0.001, max_target_seqs=25, sensitivity=' . implode('|', SENS),
             'GET ?r=job&id=…' => 'Status und Treffer (mit Titel und Taxon aus MariaDB)',
             'POST ?r=amylo (X-Api-Key)' => 'Amyloid-Neigung je Fenster (AmyloDeep auf der Tesla P4): '
                 . 'acc=YP_009724390.1 [von=194&bis=203] oder seq=…, window=4..40 (Standard 10)',
             'GET ?r=amylojob&id=…' => 'Status und Fensterwerte des AmyloDeep-Auftrags',
         ],
+        'ram' => 'Vor jeder Suche: Bedarf = 0,5 GB + k * min(Reste der DB, block_size) (Mrd. Reste), k aus Messungen '
+            . 'frueherer Suchen (?r=release -> ram.messwerte); block_size (2 .. 0.1) so, dass der Bedarf unter '
+            . 'min(' . RAM_MAX_GB . ' GB, freier Speicher - ' . RAM_RESERVE_GB . ' GB) bleibt, sonst Warten. '
+            . 'Der Auftrag meldet block_size, ram_schaetz_gb, ram_gb (gemessen) und ram_frei_gb.',
         'grenzen' => ['anfragen_pro_minute' => RATE_PER_MIN, 'max_buchstaben' => MAX_LETTERS,
                       'max_sequenzen' => MAX_RECORDS, 'offene_auftraege_pro_schluessel' => MAX_OPEN_JOBS],
         'schluessel' => 'auf Anfrage bei gh@heissa.de',
@@ -128,6 +146,7 @@ case 'release':
         'tagesdeltas' => $st->fetchAll(),
         'bereit' => ['suche' => $nr['dmnd_hash'] !== null, 'metadaten' => $nr['meta_importiert'] !== null && $idx],
         'warteschlange' => (int)$q,
+        'ram' => ram_status($db),
     ]);
 
 case 'acc':
@@ -192,6 +211,14 @@ case 'search':
     if ($max < 1 || $max > 500) fail('max_target_seqs: 1..500', 400);
     $tax = param('taxonlist', '');
     if ($tax !== '' && !preg_match('/^\d{1,8}(,\d{1,8}){0,19}$/', $tax)) fail('taxonlist: bis 20 TaxIDs, kommagetrennt', 400);
+    // Vorauswahl ueber MariaDB (dmnd_vorauswahl.py): nur die passenden Sequenzen werden durchsucht
+    $lmin = param('len_min', '');
+    $lmax = param('len_max', '');
+    $neu = param('neu_tage', '');
+    foreach (['len_min' => $lmin, 'len_max' => $lmax, 'neu_tage' => $neu] as $k => $v) {
+        if ($v !== '' && (!ctype_digit($v) || (int)$v < 1 || (int)$v > 100000)) fail("$k: ganze Zahl 1..100000", 400);
+    }
+    if ($lmin !== '' && $lmax !== '' && (int)$lmin > (int)$lmax) fail('len_min > len_max', 400);
 
     $raw = str_replace("\r", '', param('seq', ''));
     $acc = param('acc', '');
@@ -203,12 +230,12 @@ case 'search':
         if ($range !== '' && (!preg_match('/^(\d{1,6})-(\d{1,6})$/', $range, $m) || $m[1] < 1 || $m[1] > $m[2])) {
             fail('range: von-bis, z.B. 319-541', 400);
         }
-        $cmd = [BLASTDBCMD, '-db', BLASTDB, '-entry', $acc, '-target_only', '-outfmt', '%s'];
-        if ($range !== '') array_push($cmd, '-range', $range);
+        $cmd = [NR_SEQ_PY, NR_SEQ, $acc];
+        if ($range !== '') array_push($cmd, '--range', $range);
         $p = proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
         $s = $p ? trim(stream_get_contents($pipes[1])) : '';
         if ($p) proc_close($p);
-        if ($s === '') fail("Accession $acc nicht in der nr-BLAST-Datenbank (dann seq uebergeben)", 404);
+        if ($s === '') fail("Accession $acc nicht in der nr (dann seq uebergeben)", 404);
         $raw = '>' . $acc . ($range !== '' ? '_' . $range : '') . "\n" . $s;
     }
     if ($raw === '') fail('seq oder acc fehlt', 400);
@@ -235,17 +262,19 @@ case 'search':
     if ($open >= MAX_OPEN_JOBS) fail('Hoechstens ' . MAX_OPEN_JOBS . ' offene Auftraege je Schluessel', 429);
 
     $id = bin2hex(random_bytes(12));
-    $db->prepare('INSERT INTO blast_job (job_id, key_id, mode, sensitivity, evalue, max_target_seqs, taxonlist, query, n_query, query_letters)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-       ->execute([$id, $key['key_id'], $mode, $sens, $evalue, $max, $tax ?: null, $fasta, $n, $letters]);
+    $db->prepare('INSERT INTO blast_job (job_id, key_id, mode, sensitivity, evalue, max_target_seqs, taxonlist, len_min, len_max, neu_tage,
+                  query, n_query, query_letters) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+       ->execute([$id, $key['key_id'], $mode, $sens, $evalue, $max, $tax ?: null, $lmin === '' ? null : (int)$lmin,
+                  $lmax === '' ? null : (int)$lmax, $neu === '' ? null : (int)$neu, $fasta, $n, $letters]);
     $pos = $db->query("SELECT COUNT(*) FROM blast_job WHERE status IN ('queued', 'running')")->fetchColumn();
     out(['job_id' => $id, 'status' => 'queued', 'position' => (int)$pos, 'url' => "$base?r=job&id=$id"], 202);
 
 case 'job':
     $id = param('id', '');
     if (!preg_match('/^[0-9a-f]{24}$/', $id)) fail('id ungueltig', 400);
-    $st = $db->prepare('SELECT job_id, status, mode, sensitivity, evalue, max_target_seqs, taxonlist, n_query, query_letters,
-                               erstellt, gestartet, fertig, sekunden, release_id, dmnd_hash, n_hits, error
+    $st = $db->prepare('SELECT job_id, status, mode, sensitivity, evalue, max_target_seqs, taxonlist, len_min, len_max, neu_tage,
+                               n_query, query_letters, erstellt, gestartet, fertig, sekunden, release_id, dmnd_hash, n_hits,
+                               vorauswahl, block_size, ram_schaetz_gb, ram_gb, ram_frei_gb, error
                         FROM blast_job WHERE job_id = ?');
     $st->execute([$id]);
     $job = $st->fetch() ?: fail('Auftrag unbekannt', 404);

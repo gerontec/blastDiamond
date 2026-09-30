@@ -6,7 +6,9 @@
 
 Text in diesem Skript pflegen, nicht im PDF. Jeder Text steht als Paar T("deutsch", "english").
 Inline-Markup: `code`, **fett**, __kursiv__. LaTeX-Sonderzeichen werden automatisch maskiert.
-Abschnitt 8.5 (Amyloid-Kandidaten) liest die Ergebnisse live aus wagodb.amyl_v_ergebnis."""
+Abschnitt 8.5 (Amyloid-Kandidaten) liest die Ergebnisse live aus wagodb.amyl_v_ergebnis,
+die Benchmarks 4.1 und 8.7 ihre Messwerte aus blast_import, amyl_lauf und nr_build.log."""
+import datetime
 import os
 import re
 import shutil
@@ -33,7 +35,7 @@ ZEICHEN = {
     "\\": r"\textbackslash{}", "&": r"\&", "%": r"\%", "$": r"\$", "#": r"\#", "_": r"\_", "{": r"\{", "}": r"\}",
     "^": r"\textasciicircum{}", "~": r"\textasciitilde{}", "<": r"\textless{}", ">": r"\textgreater{}",
     "|": r"\textbar{}", "→": r"$\rightarrow$", "↔": r"$\leftrightarrow$", "β": r"$\beta$", "α": r"$\alpha$", "×": r"$\times$",
-    "·": r"$\cdot$", "≈": r"$\approx$", "≤": r"$\leq$", "≥": r"$\geq$",
+    "·": r"$\cdot$", "²": r"$^2$", "≈": r"$\approx$", "≤": r"$\leq$", "≥": r"$\geq$",
 }
 
 
@@ -58,6 +60,12 @@ def md(text):
     t = re.sub(r"__(.+?)__", "\x03\\1\x04", t)
     t = esc(t).replace("\x01", r"\textbf{").replace("\x02", "}").replace("\x03", r"\emph{").replace("\x04", "}")
     return re.sub("\x00(\\d+)\x00", lambda m: codes[int(m.group(1))], t)
+
+
+def num(lang, x, nk=0):
+    """Zahl mit Tausenderpunkt/-komma nach Sprache: 1.234,5 (de) bzw. 1,234.5 (en)."""
+    s = f"{x:,.{nk}f}"
+    return s.translate(str.maketrans(",.", ".,")) if lang == "de" else s
 
 
 # ------------------------------------------------------------------ Dokument-Bausteine
@@ -294,7 +302,7 @@ def amyl_ergebnis():
 
 
 def spike_test():
-    """Ergebnis des Spike-Tests (Abschnitt 8.6) aus wagodb, oder None."""
+    """Ergebnis des Spike-Tests (Abschnitt 8.8) aus wagodb, oder None."""
     try:
         sys.path.insert(0, os.path.expanduser("~/python"))
         import blast_db
@@ -324,10 +332,154 @@ def spike_test():
                   "JOIN amyl_sequenz s ON s.seq_id = f.seq_id "
                   "JOIN amyl_kandidat k ON k.kandidat_id = s.kandidat_id WHERE k.rolle = 'kontrolle'", (prob,))
         n_prot, n_kfen, n_hoeher = c.fetchone()
+        # Staerkstes Fenster je Kontrollprotein: zeigt, wie wenig ein hoher Einzelwert bedeutet.
+        c.execute("SELECT MAX(je.mx), AVG(je.mx) FROM (SELECT MAX(f.prob) AS mx FROM amyl_fenster f "
+                  "JOIN amyl_sequenz s ON s.seq_id = f.seq_id "
+                  "JOIN amyl_kandidat k ON k.kandidat_id = s.kandidat_id "
+                  "WHERE k.rolle = 'kontrolle' GROUP BY f.seq_id) je")
+        k_max, k_mittel = c.fetchone()
         return {"lauf": lauf, "laenge": laenge, "w": w, "n_fen": n_fen, "rang": int(rang), "prob": float(prob),
-                "top": top, "n_prot": n_prot, "n_kfen": n_kfen or 0, "n_hoeher": int(n_hoeher or 0)}
+                "top": top, "n_prot": n_prot, "n_kfen": n_kfen or 0, "n_hoeher": int(n_hoeher or 0),
+                "k_max": float(k_max) if k_max is not None else None,
+                "k_mittel": float(k_mittel) if k_mittel is not None else None}
     except Exception as e:
         dbg(f"Spike-Test: nicht lesbar ({e})")
+        return None
+
+
+def bau_bench():
+    """Messwerte der Erstbefuellung (Abschnitt 4.1) aus blast_import, blast_release, nr_build.log, Dateien.
+
+    Laeuft der Bau noch, sind es die Werte bis zum letzten geladenen Chunk; der Ladezeitpunkt des
+    letzten Chunks ist die verlaesslichste Uhr fuer beide Ziele, weil ihn der Ladethread schreibt."""
+    b = {}
+    try:
+        sys.path.insert(0, os.path.expanduser("~/python"))
+        import blast_db
+        import pymysql
+        c = pymysql.connect(**blast_db.cfg()).cursor()
+        c.execute("SET SESSION max_statement_time = 60")
+        c.execute("SELECT COUNT(*), SUM(n_seq), SUM(n_acc), SUM(sekunden), MAX(geladen), "
+                  "MIN(sekunden), MAX(sekunden) FROM blast_import")
+        n_chunk, seq, acc, lade_s, letzt, s_min, s_max = c.fetchone()
+        if not n_chunk:
+            return None
+        b.update(chunks=int(n_chunk), seq=int(seq), acc=int(acc), lade_s=float(lade_s),
+                 letzt=letzt, s_min=float(s_min), s_max=float(s_max))
+        c.execute("SELECT nr_sequenzen, nr_residues, dmnd_datei FROM blast_release WHERE aktiv = 1")
+        r = c.fetchone()
+        if r:
+            b.update(nr_seq=int(r[0]), nr_res=int(r[1]), dmnd=r[2])
+    except Exception as e:
+        print(f"blast_import: nicht lesbar ({e}), Abschnitt 4.1 entfaellt", file=sys.stderr)
+        return None
+
+    try:                                              # Startzeitpunkt, Threads, Leersequenzen, Ende aus dem Log
+        zeilen = open(os.path.expanduser("~/python/nr_build.log"), errors="replace").read().splitlines()
+    except OSError as e:
+        dbg(f"nr_build.log: {e}")
+        zeilen = []
+    for z in zeilen:
+        if z.endswith("=== nr_build: Start ==="):     # TEST-Laeufe tragen die Anzahl im Kopf und zaehlen nicht
+            b["start"] = datetime.datetime.strptime(z[1:20], "%Y-%m-%d %H:%M:%S")
+            b.pop("fertig_h", None)                   # alles Folgende gehoert zu diesem Bau
+        elif "start" not in b:
+            continue
+        elif z.startswith("[") and " makedb: " in z:
+            m = re.search(r"--threads (\d+)", z)
+            b["threads"] = int(m.group(1)) if m else None
+        elif "Strom" in z:
+            m = re.search(r"Leersequenzen (\d+)", z)
+            if m:
+                b["leer"] = int(m.group(1))
+        elif "NR-BUILD FERTIG" in z:
+            m = re.search(r"in ([\d.]+) h", z)
+            b["fertig_h"] = float(m.group(1)) if m else None
+
+    for pfad, schl in ((b.get("dmnd"), "dmnd_b"), ((b.get("dmnd") or "") + ".pos_tmp", "pos_b")):
+        try:
+            b[schl] = os.path.getsize(pfad)
+        except OSError:
+            pass
+    try:                                              # wartende Chunk-Dateien: volle Warteschlange = MariaDB bremst
+        import blast_meta2db as m
+        b["wartend"] = len([f for f in os.listdir(m.TMP) if f.startswith("seq_") and f.endswith(".tsv")])
+        b["wartend_b"] = sum(os.path.getsize(os.path.join(m.TMP, f)) for f in os.listdir(m.TMP))
+        quelle = open(os.path.expanduser("~/python/nr_build.py")).read()     # nicht importieren: der Bau laeuft
+        b["warteschlange"] = int(re.search(r"^MAX_CHUNKS_WARTEND = (\d+)", quelle, re.M).group(1))
+    except Exception as e:
+        dbg(f"Chunk-Warteschlange: {e}")
+    try:                                              # 10-Minuten-Mittel von sar; kurze Stichproben rauschen zu stark
+        z = subprocess.run(["sar", "-u"], capture_output=True, text=True, timeout=10,
+                           env=dict(os.environ, LC_ALL="C")).stdout.split("\n")
+        alle = [x.split() for x in z if " all " in x and re.match(r"^\d\d:\d\d", x)]
+        if alle:
+            f = alle[-1][alle[-1].index("all"):]
+            b["cpu"] = dict(zip(("user", "nice", "system", "iowait", "steal", "idle"),
+                                (float(x) for x in f[1:7])), n=os.cpu_count(), zeit=alle[-1][0])
+        b["last"] = [float(x) for x in open("/proc/loadavg").read().split()[:3]]
+    except Exception as e:
+        dbg(f"CPU-Last: {e}")
+    try:                                              # RSS des laufenden makedb, der Punkt von Patch 1
+        for z in subprocess.run(["ps", "-C", "diamond", "-o", "rss=,args="],
+                                capture_output=True, text=True, timeout=10).stdout.splitlines():
+            if " makedb" in z:
+                b["rss_kb"] = int(z.split()[0])
+                break
+    except Exception as e:
+        dbg(f"RSS von makedb: {e}")
+    if "start" in b and b.get("letzt"):
+        b["wand_s"] = (b["letzt"] - b["start"]).total_seconds()
+    return b if b.get("wand_s") else None
+
+
+def gpu_bench():
+    """Durchsatz der Tesla P4 (Abschnitt 8.7) aus amyl_lauf/amyl_fenster.
+
+    Die Laufzeit je Auftrag haengt linear an der Fensterzahl. Die Regression trennt den festen
+    Anteil je Auftrag (Warteschlange, Sequenz holen, Schreiben) vom Rechenanteil je Fenster."""
+    try:
+        sys.path.insert(0, os.path.expanduser("~/python"))
+        import blast_db
+        import pymysql
+        c = pymysql.connect(**blast_db.cfg()).cursor()
+        c.execute("SET SESSION max_statement_time = 120")
+        c.execute("SELECT l.sekunden, COUNT(f.pos) FROM amyl_lauf l JOIN amyl_fenster f ON f.lauf_id = l.lauf_id "
+                  "WHERE l.software LIKE '%amylo_api_worker%' AND l.sekunden > 0 GROUP BY l.lauf_id")
+        paare = [(float(f), float(s)) for s, f in c.fetchall()]
+        if len(paare) < 10:                           # unter zehn Auftraegen sagt die Regression nichts
+            return None
+        n = len(paare)
+        mx, my = sum(x for x, _ in paare) / n, sum(y for _, y in paare) / n
+        steig = sum((x - mx) * (y - my) for x, y in paare) / sum((x - mx) ** 2 for x, _ in paare)
+        achse = my - steig * mx
+        rest = [y - (achse + steig * x) for x, y in paare]
+        r2 = 1 - sum(r * r for r in rest) / sum((y - my) ** 2 for _, y in paare)
+        rate = sorted(x / y for x, y in paare)
+        g = {"n": n, "fenster": sum(x for x, _ in paare), "sekunden": sum(y for _, y in paare),
+             "achse": achse, "steig": steig, "r2": r2,
+             "min": rate[0], "med": rate[n // 2], "max": rate[-1]}
+        c.execute("SELECT l.lauf_id, l.n_seq, l.sekunden, COUNT(f.pos), l.bemerkung FROM amyl_lauf l "
+                  "JOIN amyl_fenster f ON f.lauf_id = l.lauf_id WHERE l.n_seq > 1 AND l.sekunden > 0 "
+                  "GROUP BY l.lauf_id ORDER BY l.n_seq DESC LIMIT 1")
+        r = c.fetchone()
+        if r:
+            g["stapel"] = {"lauf": r[0], "n_seq": r[1], "sekunden": float(r[2]), "fenster": int(r[3])}
+
+        # Die Regression misst einzelne Auftraege. Ob die Kette aus API, Warteschlange und Worker
+        # auch unter Dauerlast traegt, zeigt erst ein ganzer Durchlauf: Rechenzeit gegen Wanduhr.
+        c.execute("SELECT COUNT(*), SUM(status='done'), SUM(status='failed'), MIN(erstellt), MAX(fertig), "
+                  "TIMESTAMPDIFF(SECOND, MIN(erstellt), MAX(fertig)), SUM(sekunden), "
+                  "AVG(TIMESTAMPDIFF(SECOND, erstellt, gestartet)), "
+                  "MAX(TIMESTAMPDIFF(SECOND, erstellt, gestartet)) FROM amyl_job")
+        n_j, fertig, fehler, von, bis, spanne, rechen, warte, warte_max = c.fetchone()
+        if n_j and spanne:
+            g["kampagne"] = {"n": int(n_j), "fertig": int(fertig or 0), "fehler": int(fehler or 0),
+                             "von": von, "bis": bis, "spanne": int(spanne), "rechen": float(rechen or 0),
+                             "warte": float(warte or 0), "warte_max": float(warte_max or 0)}
+        return g
+    except Exception as e:
+        print(f"amyl_lauf: Durchsatz nicht lesbar ({e}), Abschnitt 8.7 entfaellt", file=sys.stderr)
         return None
 
 
@@ -338,7 +490,7 @@ RBD = ("RVQPTESIVRFPNITNLCPFGEVFNATRFASVYAWNRKRISNCVADYSVLYNSASFSTFKCYGVSPTKLNDL
 
 # ------------------------------------------------------------------ Inhalt
 
-def inhalt(d, amyl, spike):
+def inhalt(d, amyl, spike, bench):
     T = d.T
     d.roh(r"\begin{center}{\LARGE\bfseries " + md(T("BLAST → DIAMOND: Konzept zur Laufzeitoptimierung",
                                                     "BLAST → DIAMOND: a concept for faster searches")) + r"}\\[6pt]"
@@ -440,12 +592,16 @@ def inhalt(d, amyl, spike):
         "2.5 million nr sequences: file byte-identical to the unmodified binary, `--append` identical as well. "
         "Builds use `~/src/diamond/build/diamond` (v2.2.8 + `--append` + this patch), the same binary the cron "
         "scripts use.")
-    d.p("Die BLAST-formatierte nr in `~/blastdb` wird derzeit noch gebraucht: API (`acc`, Abschnitt 7.5) und "
-        "AmyloDeep (`--acc`/`--kandidaten`, Abschnitt 8) holen Residuen per `blastdbcmd` daraus. Wie diese "
-        "doppelte Datenhaltung aufgelöst wird, beschreibt Abschnitt 9.",
-        "The BLAST-formatted nr in `~/blastdb` is still needed for now: the API (`acc`, section 7.5) and "
-        "AmyloDeep (`--acc`/`--kandidaten`, section 8) fetch residues from it with `blastdbcmd`. Section 9 "
-        "describes how to remove this duplicate storage.")
+    d.p("Eine BLAST-formatierte nr in `~/blastdb` gibt es nicht mehr. API (`acc`, Abschnitt 7.7) und AmyloDeep "
+        "(`--acc`/`--kandidaten`, Abschnitt 8) holen Residuen über `nr_seq.py` direkt aus der .dmnd "
+        "(`/home/gh/diamond/nr_full.dmnd`, NVMe); von makedb zu X maskierte Bereiche kommen bei Bedarf von NCBI. "
+        "Abschnitt 9 beschreibt den Stand vom 24.09.2026.",
+        "A BLAST-formatted nr in `~/blastdb` no longer exists. The API (`acc`, section 7.7) and AmyloDeep "
+        "(`--acc`/`--kandidaten`, section 8) fetch residues directly from the .dmnd via `nr_seq.py` "
+        "(`/home/gh/diamond/nr_full.dmnd`, NVMe); regions that makedb masked to X are fetched from NCBI when "
+        "needed. Section 9 describes the state as of 2026-09-24.")
+
+    BAU_TEXT(d, bench.get("bau") if bench else None)
 
     d.h1("Append: neue Sequenzen ohne Neubau", "Append: new sequences without a rebuild")
     d.p("NCBI bietet für die BLAST-formatierte nr kein inkrementelles Update an (README blast/db: „Incremental "
@@ -579,6 +735,26 @@ def inhalt(d, amyl, spike):
         "`meta_importiert` in `blast_release`) is complete. After a new nr release the daily delta starts from "
         "its date; sequences appended by the delta in the meantime are skipped by the release comparison via "
         "the sequence hash.")
+    d.p("**Robustheit (seit 30.09.2026):** (1) Läuft um 04:30 noch `diamond_append.py` (ein neues nr-Release "
+        "braucht Stunden), wartet das Delta bis zu 12 h auf die Sperre (`LOCK_WAIT_H`), statt den Tag "
+        "auszulassen. (2) Die Hash-Caches werden blockweise fortgeschrieben (`merge_in_datei`: alte Datei per "
+        "Memory-Map, neue per `open_memmap`, Blöcke zu 2^26 Einträgen) statt mit `np.union1d` im RAM – das "
+        "brauchte für `nr_acc_hashes.npy` (15,5 GB) rund 47 GB und endete am 30.09. im OOM-Kill; jetzt ~0,8 GB "
+        "anonymer Speicher. (3) Findet ein Lauf ein altes `~/nr_daily/state.json`, dessen Tagesdateien alle "
+        "schon in `blast_release` stehen, war der Metadaten-Commit durch und der Lauf starb erst danach: er "
+        "trägt die Sequenz- und Accession-Hashes aus den liegengebliebenen .fa/.acc.tsv nach (mehrfach "
+        "harmlos) und leert das Verzeichnis – auch wenn keine neuen Tagesdateien offen sind. Fehlen dagegen "
+        "Metadaten, bricht er weiter mit Fehler ab (dmnd und MariaDB könnten auseinanderlaufen).",
+        "**Robustness (since 2026-09-30):** (1) If `diamond_append.py` is still running at 04:30 (a new nr "
+        "release takes hours), the delta waits up to 12 h for the lock (`LOCK_WAIT_H`) instead of skipping the "
+        "day. (2) The hash caches are extended block by block (`merge_in_datei`: old file memory-mapped, new "
+        "one via `open_memmap`, blocks of 2^26 entries) instead of `np.union1d` in RAM – for "
+        "`nr_acc_hashes.npy` (15.5 GB) that needed about 47 GB and ended in an OOM kill on 2026-09-30; now "
+        "~0.8 GB of anonymous memory. (3) If a run finds an old `~/nr_daily/state.json` whose daily files are "
+        "all in `blast_release` already, the metadata commit went through and the run died only afterwards: it "
+        "adds the sequence and accession hashes from the leftover .fa/.acc.tsv (idempotent) and clears the "
+        "directory – even when no new daily files are pending. If metadata is missing, it still stops with an "
+        "error (dmnd and MariaDB could diverge).")
 
     d.h1("Metadaten in MariaDB (wagodb, Präfix `blast_`)", "Metadata in MariaDB (wagodb, prefix `blast_`)")
     d.p("Die .dmnd-Datei kennt nur Sequenzen, Accessions als Namen und TaxIDs – kein Datum, keinen NCBI-Stand, "
@@ -713,6 +889,22 @@ WHERE a.acc = 'YP_009724390.1';
         "**Credentials:** all BLAST scripts get them via `~/python/blast_db.py` (reads DB_CFG from "
         "`~/mqtt-listener.py`, database wagodb).")
 
+    d.h2("Zeichensatz-Falle bei Joins auf `blast_acc.acc`", "Character-set trap in joins on `blast_acc.acc`")
+    d.p("`blast_acc.acc` ist `ascii`, Tabellen wie `amyl_sequenz.acc` sind `utf8mb4`. MariaDB wandelt dann die "
+        "`blast_acc`-Spalte um und kann `idx_acc` nicht benutzen: Vollscan über 1,9 Mrd. Zeilen, die View "
+        "`amyl_v_ergebnis` hängt. Mit `a.acc = CONVERT(s.acc USING ascii)` nutzt der Join den Index (344 Treffer "
+        "in 0,003 s). Dauerhaft ergänzt eine virtuelle Spalte `acc_u VARCHAR(32) CHARACTER SET utf8mb4 "
+        "COLLATE utf8mb4_general_ci AS (acc) VIRTUAL` mit Index `idx_acc_u` die Tabelle (Skript "
+        "`blast_acc_utf8mb4_index.sh`, zwei `ALTER TABLE`, online; Bau gestartet am 24.09.2026 08:49, dauert Stunden). "
+        "Danach joinen utf8mb4-Tabellen mit `a.acc_u = s.acc` ohne `CONVERT`.",
+        "`blast_acc.acc` is `ascii`, tables like `amyl_sequenz.acc` are `utf8mb4`. MariaDB then converts the "
+        "`blast_acc` column and cannot use `idx_acc`: a full scan over 1.9 billion rows, and the view "
+        "`amyl_v_ergebnis` hangs. With `a.acc = CONVERT(s.acc USING ascii)` the join uses the index (344 hits in "
+        "0.003 s). Permanently, a virtual column `acc_u VARCHAR(32) CHARACTER SET utf8mb4 COLLATE "
+        "utf8mb4_general_ci AS (acc) VIRTUAL` with index `idx_acc_u` extends the table (script "
+        "`blast_acc_utf8mb4_index.sh`, two online `ALTER TABLE`s; build started 2026-09-24 08:49, takes hours). "
+        "After that utf8mb4 tables join with `a.acc_u = s.acc` without `CONVERT`.")
+
     d.h1("Öffentliche API", "Public API")
     d.p("Damit auch andere die DIAMOND-Suche und die Metadaten nutzen können, gibt es eine minimale JSON-API: "
         "`https://yt.heissa.de/blast/api.php`. yt.heissa.de hat nur einen AAAA-Eintrag, die API ist von außen "
@@ -728,6 +920,9 @@ WHERE a.acc = 'YP_009724390.1';
         ["GET ?r=release", ("frei", "open"),
          ("geladener nr-Stand, Tagesdeltas seitdem, Bereitschaft von Suche und Metadaten, Warteschlange",
           "loaded nr release, daily deltas since, readiness of search and metadata, queue")],
+        ["GET ?r=release → ram", ("frei", "open"),
+         ("freier Speicher (MemAvailable), Grenze einer Suche, Messwerte k je Modus/Sensitivität (Abschnitt RAM-Planung)",
+          "free memory (MemAvailable), limit for one search, measured k per mode/sensitivity (section memory planning)")],
         ["GET ?r=acc&acc=YP_009724390.1", ("frei", "open"),
          ("Titel, Länge, Herkunft/Datum der Sequenz, TaxID mit Namen, alle identischen Einträge (bis 200). Ohne "
           ".Version: neueste Version",
@@ -745,15 +940,19 @@ WHERE a.acc = 'YP_009724390.1';
           "taxon names from MariaDB")],
     ], [5.2, 2.4, 9.4])
     d.p("**Suchparameter** (Formular oder JSON): `seq` (FASTA oder rohe Sequenz, bis 50 Sequenzen / 100.000 "
-        "Buchstaben) **oder** `acc` (Accession aus nr, optional mit `range` von-bis, nur blastp; siehe 7.5), "
-        "`mode` blastp oder blastx, `taxonlist` (bis 20 TaxIDs, z.B. 4751 = Fungi, 9606 = Mensch), `evalue` "
-        "(Standard 0,001), `max_target_seqs` (1–500, Standard 25), `sensitivity` fast bis ultra-sensitive "
-        "(Standard sensitive).",
+        "Buchstaben) **oder** `acc` (Accession aus nr, optional mit `range` von-bis, nur blastp; siehe 7.7), "
+        "`mode` blastp oder blastx, `taxonlist` (bis 20 TaxIDs samt Untertaxa, z.B. 4751 = Fungi, 9606 = Mensch), "
+        "`len_min`/`len_max` (Länge der Treffersequenz), `neu_tage` (bei NCBI angelegt in den letzten N Tagen), "
+        "`evalue` (Standard 0,001), `max_target_seqs` (1–500, Standard 25), `sensitivity` fast bis "
+        "ultra-sensitive (Standard sensitive). Das Ergebnis enthält zusätzlich `vorauswahl`, `block_size`, "
+        "`ram_schaetz_gb`, `ram_gb` (gemessen) und `ram_frei_gb`.",
         "**Search parameters** (form or JSON): `seq` (FASTA or raw sequence, up to 50 sequences / 100,000 "
-        "letters) **or** `acc` (accession from nr, optionally with `range` from-to, blastp only; see 7.5), "
-        "`mode` blastp or blastx, `taxonlist` (up to 20 TaxIDs, e.g. 4751 = fungi, 9606 = human), `evalue` "
-        "(default 0.001), `max_target_seqs` (1–500, default 25), `sensitivity` fast to ultra-sensitive (default "
-        "sensitive).")
+        "letters) **or** `acc` (accession from nr, optionally with `range` from-to, blastp only; see 7.7), "
+        "`mode` blastp or blastx, `taxonlist` (up to 20 TaxIDs including sub-taxa, e.g. 4751 = fungi, 9606 = "
+        "human), `len_min`/`len_max` (length of the hit sequence), `neu_tage` (created at NCBI within the last N "
+        "days), `evalue` (default 0.001), `max_target_seqs` (1–500, default 25), `sensitivity` fast to "
+        "ultra-sensitive (default sensitive). The result additionally contains `vorauswahl`, `block_size`, "
+        "`ram_schaetz_gb`, `ram_gb` (measured) and `ram_frei_gb`.")
     d.code("""
 curl -X POST -H 'X-Api-Key: …' -H 'Content-Type: application/json' \\
   -d '{"seq":">q1\\nMKT…","mode":"blastp","taxonlist":"9606"}' \\
@@ -765,8 +964,8 @@ curl 'https://yt.heissa.de/blast/api.php?r=job&id=18a8ceae9fcc7d63063e5ffc'
     d.h2("Aufbau", "Architecture")
     d.p("**api.php** (`/var/www/blast`, mod_php, Alias im vHost yt.heissa.de vor dem Invidious-Proxy) beantwortet "
         "Metadaten-Anfragen direkt und legt Suchen nur als Zeile in `blast_job` an. Bei `acc` holt sie die "
-        "Query-Sequenz vorher per `blastdbcmd -entry … -target_only [-range …]` aus der BLAST-nr (`~/blastdb/nr`, "
-        "~0,3 s). Eine DIAMOND-Suche gegen die volle nr belegt alle 20 Kerne für Minuten und darf deshalb nie im "
+        "Query-Sequenz vorher per `nr_seq.py ACC [--range von-bis]` aus der .dmnd (Direktzugriff über die "
+        "Offset-Tabelle, ~0,1 s; Abschnitt 9). Eine DIAMOND-Suche gegen die volle nr belegt alle 20 Kerne für Minuten und darf deshalb nie im "
         "Webserver-Prozess laufen. **blast_api_worker.py** (systemd `blast-api-worker`, Benutzer gh) holt die "
         "Aufträge nacheinander, ruft DIAMOND auf (Zeitlimit 1 h), schreibt die Treffer in `blast_job_hit` und "
         "vermerkt nr-Stand und dmnd_hash. Während der Suche hält er eine geteilte Sperre auf "
@@ -775,8 +974,8 @@ curl 'https://yt.heissa.de/blast/api.php?r=job&id=18a8ceae9fcc7d63063e5ffc'
         "Solange `dmnd_hash` im aktiven Release fehlt (Erstaufbau), nimmt die API keine Suchen an (503).",
         "**api.php** (`/var/www/blast`, mod_php, alias in the yt.heissa.de vhost in front of the Invidious "
         "proxy) answers metadata requests directly and only records searches as a row in `blast_job`. For `acc` "
-        "it first fetches the query sequence with `blastdbcmd -entry … -target_only [-range …]` from the BLAST "
-        "nr (`~/blastdb/nr`, ~0.3 s). A DIAMOND search against full nr occupies all 20 cores for minutes and "
+        "it first fetches the query sequence with `nr_seq.py ACC [--range from-to]` from the .dmnd (direct access "
+        "via the offset table, ~0.1 s; section 9). A DIAMOND search against full nr occupies all 20 cores for minutes and "
         "must never run inside the web server process. **blast_api_worker.py** (systemd `blast-api-worker`, "
         "user gh) takes the jobs one by one, runs DIAMOND (time limit 1 h), writes the hits to `blast_job_hit` "
         "and records nr release and dmnd_hash. During a search it holds a shared lock on "
@@ -794,21 +993,125 @@ curl 'https://yt.heissa.de/blast/api.php?r=job&id=18a8ceae9fcc7d63063e5ffc'
                            "hits in DIAMOND format 6 (qseqid … bitscore, staxids)")],
         ["blast_api_hits", ("Zähler je IP bzw. IPv6-/64 und Minute (Ratenbegrenzung), vom Worker aufgeräumt",
                             "counter per IP or IPv6 /64 and minute (rate limit), cleaned up by the worker")],
+        ["blast_ram_mess", ("Spitzen-RSS jeder Suche (Modus, Sensitivität, Anfrage- und DB-Reste, block_size, "
+                            "Schätzung, freier Speicher) – Grundlage der RAM-Schätzung",
+                            "peak RSS of every search (mode, sensitivity, query and DB letters, block_size, "
+                            "estimate, free memory) – basis of the memory estimate")],
+        ["blast_ram_status", ("eine Zeile: MemAvailable, MemTotal, SwapFree; vom Worker alle 30 s geschrieben",
+                              "one row: MemAvailable, MemTotal, SwapFree; written by the worker every 30 s")],
     ], [3.3, 13.7])
     d.bild("api", "ER-Diagramm der API (grau: Tabellen aus Abschnitt 6, nur verknüpfte Spalten), erzeugt aus dem Live-Schema (information_schema). Durchgezogen: deklarierte Fremdschlüssel, gestrichelt: logische Verknüpfungen; Krähenfuß = viele. PK/UK/IX/FK wie in der Datenbank.",
            "ER diagram of the API (grey: tables from section 6, linked columns only), generated from the live schema (information_schema). Solid: declared foreign keys, dashed: logical links; crow's foot = many. PK/UK/IX/FK as in the database.")
 
+    d.h2("Vorauswahl über MariaDB (`dmnd_vorauswahl.py`)", "Pre-selection via MariaDB (`dmnd_vorauswahl.py`)")
+    d.p("Die .dmnd hat außer der Offset-Tabelle (16 Byte je Sequenz, `pos_array_offset`) keinen Index; einen "
+        "Seed-Index (`diamond makeidx`, `.seed_idx`) erlaubt DIAMOND nur bis 100 Mio. Reste (`MAX_LETTERS` in "
+        "`data/index.cpp`), die nr hat 436 Mrd. Jede Suche baut die Seeds daher neu und liest die ganze Datei – "
+        "auch mit `--taxonlist`. Schneller wird sie nur, wenn weniger Sequenzen durchsucht werden: Sind `taxonlist`, "
+        "`len_min`/`len_max` oder `neu_tage` gesetzt, bestimmt MariaDB die OIDs (Taxon samt Untertaxa per "
+        "rekursiver CTE über `blast_taxon.parent` und `blast_acc.idx_taxid`; Länge über `blast_seq`; Anlagedatum "
+        "über `blast_seq_ncbi.createdate`), `dmnd_getseq.Dmnd` holt die Sätze über die Offset-Tabelle, und "
+        "`diamond makedb` baut daraus eine Teil-.dmnd in `~/diamond/vorauswahl` (Cache 2 Tage, Schlüssel = "
+        "Kriterien + dmnd_hash). Gesucht wird mit `--dbsize` = Reste der vollen nr, damit die E-Werte mit einer "
+        "Vollsuche vergleichbar bleiben; die Taxa der Treffer trägt der Worker aus `blast_acc` nach. Über 50 Mio. "
+        "Sequenzen (`VORAUSWAHL_MAX_SEQ`) lohnt die Teil-.dmnd nicht mehr: dann Vollsuche mit `--taxonlist` und "
+        "Nachfilter auf Länge/Datum.",
+        "Apart from the offset table (16 bytes per sequence, `pos_array_offset`) the .dmnd has no index; DIAMOND "
+        "allows a seed index (`diamond makeidx`, `.seed_idx`) only up to 100 million letters (`MAX_LETTERS` in "
+        "`data/index.cpp`), nr has 436 billion. Every search therefore builds the seeds anew and reads the whole "
+        "file – even with `--taxonlist`. It only gets faster when fewer sequences are searched: if `taxonlist`, "
+        "`len_min`/`len_max` or `neu_tage` is set, MariaDB determines the OIDs (taxon including sub-taxa via a "
+        "recursive CTE over `blast_taxon.parent` and `blast_acc.idx_taxid`; length via `blast_seq`; creation "
+        "date via `blast_seq_ncbi.createdate`), `dmnd_getseq.Dmnd` reads the records via the offset table, and "
+        "`diamond makedb` builds a sub-.dmnd in `~/diamond/vorauswahl` (cached 2 days, key = criteria + "
+        "dmnd_hash). The search uses `--dbsize` = letters of the full nr so that E-values stay comparable with a "
+        "full search; the worker adds the hits' taxa from `blast_acc`. Above 50 million sequences "
+        "(`VORAUSWAHL_MAX_SEQ`) the sub-.dmnd no longer pays off: then a full search with `--taxonlist` and a "
+        "post-filter on length/date.")
+    d.tabelle([("Vorauswahl", "Pre-selection"), ("Sequenzen", "Sequences"), ("Aufbau", "Build"),
+               ("Suche TTR 20–70", "Search TTR 20–70")], [
+        [("keine (volle nr)", "none (full nr)"), "1.156.964.465", "–", ("895 s (fast, -b 2)", "895 s (fast, -b 2)")],
+        [("neu_tage=90", "neu_tage=90"), "2.543.725", "31 s", ("1,8 s fast / 12,9 s sensitive", "1.8 s fast / 12.9 s sensitive")],
+        [("neu_tage=4", "neu_tage=4"), "71.699", "1,0 s", "–"],
+    ], [4, 3.2, 2, 5])
+    d.p("**Grenze des Datumsfilters:** `createdate` gibt es nur für die per Tagesdelta angehängten Sequenzen "
+        "(ab 16.09.2026) – für die 1,15 Mrd. Sequenzen des nr-Stands nicht, und die BLAST-Datenbank selbst trägt "
+        "kein Datum je Sequenz. Nachfüllen für den nr-Stand: `blast_ncbi_nachfuellen.py` liest die "
+        "GenBank-Tagesdateien ab 02.07.2026 (3,25 Mio. OIDs des nr-Stands), danach holt "
+        "`blast_createdate_fill.py --von-vorn` das Anlagedatum per esummary. RefSeq-Tagesdateien reichen nur "
+        "~4 Wochen zurück.",
+        "**Limit of the date filter:** `createdate` exists only for sequences appended by the daily delta (from "
+        "2026-09-16) – not for the 1.15 billion sequences of the nr release, and the BLAST database itself holds "
+        "no per-sequence date. Backfill for the nr release: `blast_ncbi_nachfuellen.py` reads the GenBank daily "
+        "files from 2026-07-02 (3.25 million OIDs of the nr release), then `blast_createdate_fill.py --von-vorn` "
+        "fetches the creation date via esummary. RefSeq daily files only go back ~4 weeks.")
+
+    d.h2("RAM-Planung jeder Suche", "Memory planning for every search")
+    d.p("DIAMOND lädt die Datenbank in Blöcken von `--block-size` Mrd. Resten; je Shape (Anzahl je nach "
+        "Sensitivität) entsteht eine Seed-Tabelle mit ~18 Byte je Seed. Bei kleinen Anfragen filtert DIAMOND die "
+        "Seeds des Blocks gegen die Seeds der Anfrage (`query_seeds_hashed`), der Bedarf hängt daher stark von "
+        "der Anfragegröße ab. Die .dmnd liefert nur die Reste-Zahl (Kopf, `letters`); der Rest wird gemessen. "
+        "Der Worker rechnet vor jeder Suche:",
+        "DIAMOND loads the database in blocks of `--block-size` billion letters; each shape (number depends on "
+        "the sensitivity) gets a seed table of ~18 bytes per seed. For small queries DIAMOND filters the block's "
+        "seeds against the query's seeds (`query_seeds_hashed`), so the need depends strongly on the query size. "
+        "The .dmnd only provides the letter count (header, `letters`); the rest is measured. Before every search "
+        "the worker computes:")
+    d.liste([
+        ("Grenze = min(48 GB, MemAvailable - 4 GB Reserve), direkt vor dem Start aus `/proc/meminfo`.",
+         "limit = min(48 GB, MemAvailable - 4 GB reserve), read from `/proc/meminfo` right before the start."),
+        ("Bedarf = 0,5 GB + k · min(Reste der DB, b) (in Mrd. Resten). k (GB je Mrd. Reste) = größter Messwert in "
+         "`blast_ram_mess` bei gleichem Modus und gleicher Sensitivität mit Anfrage im Bereich q/4…4q, sonst aus "
+         "größeren Anfragen, sonst Startwert; plus 20 % Sicherheit.",
+         "need = 0.5 GB + k · min(DB letters, b) (in billions). k (GB per billion letters) = largest measured "
+         "value in `blast_ram_mess` with the same mode and sensitivity and a query within q/4…4q, else from larger "
+         "queries, else a start value; plus 20 % margin."),
+        ("b = größte Stufe aus 2 / 1 / 0,5 / 0,25 / 0,1, deren Bedarf unter die Grenze passt (weniger Blöcke = "
+         "schneller). Passt keine, wartet der Worker bis 30 min auf freien Speicher, dann Fehler.",
+         "b = the largest step of 2 / 1 / 0.5 / 0.25 / 0.1 whose need fits under the limit (fewer blocks = "
+         "faster). If none fits, the worker waits up to 30 min for free memory, then fails."),
+        ("DIAMOND läuft unter `/usr/bin/time -f %M`; das Spitzen-RSS geht mit Schätzung und freiem Speicher in "
+         "`blast_ram_mess` und in den Auftrag (`ram_gb`). Jede Suche macht die nächste Schätzung genauer.",
+         "DIAMOND runs under `/usr/bin/time -f %M`; the peak RSS goes, with estimate and free memory, into "
+         "`blast_ram_mess` and into the job (`ram_gb`). Every search improves the next estimate."),
+    ])
+    d.p("Startwerte k: fast 1,5, sensitive 3, mid-sensitive 3, more-sensitive 5, very-sensitive 8, "
+        "ultra-sensitive 12; ×2 bei Anfragen über 5.000 Reste und bei blastx. fast und sensitive stammen aus "
+        "Messungen (Block-Test 24.09., Teil-.dmnd 30.09.), die übrigen sind vorsichtige Annahmen, bis Messungen "
+        "vorliegen. Apache sieht `/proc/meminfo` nicht (systemd `ProcSubset=pid`), daher schreibt der Worker den "
+        "Speicherstand für `?r=release` alle 30 s nach `blast_ram_status`. Seit 30.09.2026 hat der dell zusätzlich "
+        "32 GB Swap auf der NVMe (`/swapfile`, `vm.swappiness=10`) als Puffer gegen OOM-Kills.",
+        "Start values k: fast 1.5, sensitive 3, mid-sensitive 3, more-sensitive 5, very-sensitive 8, "
+        "ultra-sensitive 12; ×2 for queries above 5,000 letters and for blastx. fast and sensitive come from "
+        "measurements (block test 2026-09-24, sub-.dmnd 2026-09-30), the others are cautious assumptions until "
+        "measurements exist. Apache cannot see `/proc/meminfo` (systemd `ProcSubset=pid`), so the worker writes "
+        "the memory state for `?r=release` to `blast_ram_status` every 30 s. Since 2026-09-30 the dell also has "
+        "32 GB of swap on the NVMe (`/swapfile`, `vm.swappiness=10`) as a buffer against OOM kills.")
+
+    d.p("**Test (30.09.2026, extern über heissa.de):** SARS-CoV-2-Spike YP_009724390.1 als S1 (Rest 14–685) und "
+        "S2 (686–1273), 1.260 aa, `ultra-sensitive`, `neu_tage=100`. Vorauswahl 2.544.520 Sequenzen / 1,08 Mrd. "
+        "Reste in 37,3 s (OIDs 5,5 s, Sätze 27,5 s, makedb 4,3 s), Suche 46 s, Auftrag gesamt 113,8 s. RAM: frei "
+        "52,3 GB, Schätzung 16,1 GB (Startwert), gemessen 1,88 GB bei `--block-size 2` – k = 1,27 GB je Mrd. Reste "
+        "steht seitdem als Messwert in `blast_ram_mess`. Ohne Trefferobergrenze (direkt auf dem dell, 57,6 s): S1 506 "
+        "Treffer (265 ≥ 90 % Identität), S2 510 Treffer (382 ≥ 90 %).",
+        "**Test (2026-09-30, external via heissa.de):** SARS-CoV-2 spike YP_009724390.1 as S1 (residues 14–685) "
+        "and S2 (686–1273), 1,260 aa, `ultra-sensitive`, `neu_tage=100`. Pre-selection 2,544,520 sequences / "
+        "1.08 billion letters in 37.3 s (OIDs 5.5 s, records 27.5 s, makedb 4.3 s), search 46 s, job total "
+        "113.8 s. Memory: 52.3 GB free, estimate 16.1 GB (start value), measured 1.88 GB at `--block-size 2` – "
+        "k = 1.27 GB per billion letters is stored in `blast_ram_mess` since. Without a hit limit (directly on the "
+        "dell, 57.6 s): S1 506 hits (265 ≥ 90 % identity), S2 510 hits (382 ≥ 90 %).")
+
     d.h2("Schutz", "Protection")
     d.p("Eigener MariaDB-Benutzer `blast_api`: nur SELECT auf die Metadaten-Tabellen und Views, INSERT nur auf "
-        "blast_job, INSERT/UPDATE nur auf blast_api_hits; Zugangsdaten in `/etc/blast_api.ini` (root:www-data, "
-        "640). Alle Abfragen mit Prepared Statements, Eingaben per Muster geprüft; `blastdbcmd` wird ohne Shell "
+        "blast_job, INSERT/UPDATE nur auf blast_api_hits, SELECT auf blast_ram_mess/blast_ram_status; Zugangsdaten in `/etc/blast_api.ini` (root:www-data, "
+        "640). Alle Abfragen mit Prepared Statements, Eingaben per Muster geprüft; `nr_seq.py` wird ohne Shell "
         "mit geprüfter Accession/Range aufgerufen. 60 Anfragen je Minute und Client. Suchen nur mit Schlüssel, "
         "höchstens 3 offene Aufträge je Schlüssel, Tageskontingent je Schlüssel (Standard 20). Die job_id ist "
         "96 bit Zufall und zugleich die Berechtigung zum Lesen des Ergebnisses. Accession-Abfragen antworten mit "
         "503, bis der Index `idx_acc` existiert – ohne ihn wäre jede Abfrage ein Scan über 1,9 Mrd. Zeilen.",
         "Dedicated MariaDB user `blast_api`: SELECT only on the metadata tables and views, INSERT only on "
-        "blast_job, INSERT/UPDATE only on blast_api_hits; credentials in `/etc/blast_api.ini` (root:www-data, "
-        "640). All queries use prepared statements, inputs are pattern-checked; `blastdbcmd` is called without "
+        "blast_job, INSERT/UPDATE only on blast_api_hits, SELECT on blast_ram_mess/blast_ram_status; credentials in `/etc/blast_api.ini` (root:www-data, "
+        "640). All queries use prepared statements, inputs are pattern-checked; `nr_seq.py` is called without "
         "a shell and with a validated accession/range. 60 requests per minute and client. Searches only with a "
         "key, at most 3 open jobs per key, daily quota per key (default 20). The job_id is 96 random bits and "
         "at the same time the permission to read the result. Accession requests return 503 until the index "
@@ -957,12 +1260,12 @@ curl 'https://yt.heissa.de/blast/api.php?r=job&id=…'
         "verändern. Das Paket selbst rechnet nur auf der CPU und führt ESM-2 650M für dieselben Fenster dreimal "
         "aus (NN-Kopf, SVM, XGBoost). Der Wrapper legt die Torch-Modelle auf CUDA, rechnet in Stapeln zu 64 und "
         "die 650M-Embeddings je Fenstermenge nur einmal. Eingabe: Sequenz, FASTA, `--acc` oder `--kandidaten` "
-        "(TSV Accession, Kürzel); Sequenzen per `blastdbcmd` aus der lokalen nr (siehe Abschnitt 9).",
+        "(TSV Accession, Kürzel); Sequenzen über `nr_seq.py` aus der .dmnd, X-Maskierung per NCBI ausgeglichen (siehe Abschnitt 9).",
         "`~/iver_sim/ol_amyloid/amylo_gpu.py` subclasses `EnsembleRollingWindowPredictor` without modifying the "
         "package. The package itself only runs on the CPU and evaluates ESM-2 650M three times for the same "
         "windows (NN head, SVM, XGBoost). The wrapper moves the Torch models to CUDA, works in batches of 64 and "
         "computes the 650M embeddings only once per set of windows. Input: sequence, FASTA, `--acc` or "
-        "`--kandidaten` (TSV accession, short name); sequences come from the local nr via `blastdbcmd` (see "
+        "`--kandidaten` (TSV accession, short name); sequences come from the .dmnd via `nr_seq.py`, X masking resolved via NCBI (see "
         "section 9).")
     d.p("**Prüfung gegen das Original** (`--vergleich`), Aβ42 (42 aa, 33 Fenster): größte Abweichung je Fenster "
         "7e-7, GPU 4,4 s gegen 43,4 s CPU. Die stärksten Fenster liegen auf den bekannten Aggregationskernen: "
@@ -1072,6 +1375,8 @@ $PY amylo_gpu.py --acc YP_009724390.1 -w 10
         "job creates its own `amyl_lauf`, and the values go into the same tables as manual runs (8.4) – so an "
         "API result stays just as analysable later.")
 
+    GPU_TEXT(d, bench.get("gpu") if bench else None)
+
     d.h2("Beispiel: eine Literaturaussage prüfen (Spike 194–203)",
          "Example: checking a published claim (spike 194–203)")
     d.p("Der Fall zeigt, was die Teile zusammen leisten. Ausgangspunkt ist eine Angabe aus der Literatur "
@@ -1175,19 +1480,33 @@ python3 spike_amyloid_test.py --auswerten
                 "how a score of 0.63 compares to arbitrary human segments.")
         else:
             anteil = 100 * sp["n_hoeher"] / sp["n_kfen"]
+            skala = ""
+            if sp.get("k_mittel"):
+                skala = (f" Zum Maßstab: das stärkste Fenster eines Kontrollproteins liegt im Mittel bei "
+                         f"{k(sp['k_mittel'])}, im Höchstfall bei {k(sp['k_max'])} – ein hoher Einzelwert ist "
+                         f"hier also der Normalfall, kein Befund.",
+                         f" For scale: the strongest window of a control protein averages {k(sp['k_mittel'])} "
+                         f"and reaches {k(sp['k_max'])} at most – a high single score is the norm here, not a "
+                         f"finding.")
             d.p(f"**Gegen die Kontrollen:** {sp['n_prot']} humane SwissProt-Proteine ergeben "
                 f"{t(sp['n_kfen'])} Fenster; {k(anteil, 2)} % davon erreichen {k(sp['prob'])} oder mehr. "
-                f"Je kleiner dieser Anteil, desto auffälliger ist das Fragment; liegt er im Prozentbereich, "
-                f"trennt AmyloDeep den Abschnitt nicht vom Hintergrund.",
+                f"Je kleiner dieser Anteil, desto auffälliger wäre das Fragment; bei diesem Anteil hebt es "
+                f"sich " + ("nicht vom Hintergrund ab." if anteil > 5 else "vom Hintergrund ab.")
+                + (skala[0] if skala else ""),
                 f"**Against the controls:** {sp['n_prot']} human SwissProt proteins yield {t(sp['n_kfen'])} "
                 f"windows; {k(anteil, 2)} % of them reach {k(sp['prob'])} or more. The smaller this share, the "
-                f"more conspicuous the fragment; if it lies in the percent range, AmyloDeep does not separate "
-                f"the segment from the background.")
+                f"more conspicuous the fragment would be; at this share it does "
+                + ("not stand out from the background." if anteil > 5 else "stand out from the background.")
+                + (skala[1] if skala else ""))
 
     # ---------------------------------------------------------------- 9 Doppelte Datenhaltung
     d.h1("Doppelte Datenhaltung auflösen", "Removing the duplicate storage")
-    d.p("Dieselben Sequenzen liegen zweimal auf dem dell: als BLAST-nr und als DIAMOND-Datenbank.",
-        "The same sequences are stored twice on the dell: as BLAST nr and as DIAMOND database.")
+    d.p("Dieselben Sequenzen lagen zweimal auf dem dell: als BLAST-nr und als DIAMOND-Datenbank. **Stand 24.09.2026:** "
+        "Die BLAST-nr ist nicht mehr vorhanden, es gilt nur noch die DIAMOND-Datenbank; die Tabelle unten und die "
+        "Zahlen zur BLAST-nr sind der Ausgangszustand.",
+        "The same sequences were stored twice on the dell: as BLAST nr and as DIAMOND database. **State 2026-09-24:** "
+        "the BLAST nr no longer exists, only the DIAMOND database remains; the table below and the figures on the "
+        "BLAST nr describe the initial state.")
     d.tabelle([("Datenbestand", "Data set"), ("Größe", "Size"), ("Ort", "Location"), ("Stand", "State")], [
         [("`~/blastdb/nr` (BLAST, 176 Volumes)", "`~/blastdb/nr` (BLAST, 176 volumes)"), "857 GB",
          ("System-NVMe (78 % belegt)", "system NVMe (78 % used)"), ("eingefroren 16.09.2026", "frozen 2026-09-16")],
@@ -1299,25 +1618,81 @@ python3 spike_amyloid_test.py --auswerten
 
     d.h2("Umstellung und Freigabe", "Migration and release")
     d.liste([
-        ("`dmnd_getseq.py` bauen (nach Abschluss von `nr_build.py`; `blast_dmnd_luecke` und `idx_acc` liegen "
-         "dann vor).",
-         "Build `dmnd_getseq.py` (after `nr_build.py` has finished; `blast_dmnd_luecke` and `idx_acc` exist "
-         "then)."),
-        ("Abgleich: für eine Stichprobe von 100.000 zufälligen Accessions `blastdbcmd` gegen `dmnd_getseq.py`, "
-         "alle Residuen identisch; dazu alle 43 Amyloid-Kandidaten.",
-         "Cross-check: for a sample of 100,000 random accessions, `blastdbcmd` vs. `dmnd_getseq.py` must return "
-         "identical residues; plus all 43 amyloid candidates."),
-        ("`api.php` (acc) und `amylo_gpu.py` (`--acc`, `--kandidaten`) auf `dmnd_getseq.py` umstellen.",
-         "Switch `api.php` (acc) and `amylo_gpu.py` (`--acc`, `--kandidaten`) to `dmnd_getseq.py`."),
-        ("Danach `~/blastdb` löschen: 857 GB frei auf der System-NVMe (heute 78 % belegt). Löschen erst nach "
-         "bestandenem Abgleich und ausdrücklicher Freigabe; ein Vollneubau lädt die nr ohnehin neu von NCBI.",
-         "Then delete `~/blastdb`: 857 GB freed on the system NVMe (78 % used today). Delete only after the "
-         "cross-check has passed and with explicit approval; a full rebuild downloads nr from NCBI anyway."),
-        ("`nr_full.dmnd` danach von der HDD (sda5) auf die freie System-NVMe verschieben: DIAMOND streamt die "
-         "ganze Datenbank je Suche, von der HDD dauert ein Durchgang über ~460 GB eine Stunde und mehr.",
-         "Then move `nr_full.dmnd` from the HDD (sda5) to the freed system NVMe: DIAMOND streams the whole "
-         "database per search, and one pass over ~460 GB from the HDD takes an hour or more."),
+        ("`dmnd_getseq.py` gebaut (Offset-Tabelle, `blast_dmnd_luecke`, `idx_acc`). Umgesetzt.",
+         "`dmnd_getseq.py` built (offset table, `blast_dmnd_luecke`, `idx_acc`). Done."),
+        ("Abgleich: gegen `blastdbcmd` nicht mehr möglich, die BLAST-nr existiert nicht mehr. Stattdessen gegen die "
+         "344 in `amyl_sequenz` gespeicherten Originalsequenzen (aus der früheren BLAST-nr, 16.09.): mit "
+         "NCBI-Fallback 344/344 identisch, ohne 220/344 (die übrigen 124 gleich lang, nur durch X-Maskierung anders).",
+         "Cross-check: against `blastdbcmd` no longer possible, the BLAST nr no longer exists. Instead against the "
+         "344 original sequences stored in `amyl_sequenz` (from the former BLAST nr, 2026-09-16): 344/344 identical "
+         "with the NCBI fallback, 220/344 without (the other 124 have the same length and differ only by X masking)."),
+        ("`api.php` (acc) und `amylo_gpu.py` (`--acc`, `--kandidaten`) rufen `nr_seq.py` auf statt `blastdbcmd`. "
+         "Umgesetzt am 24.09.2026; `api.php` läuft als Benutzer www-data, `nr_seq.py` setzt dafür `HOME` selbst.",
+         "`api.php` (acc) and `amylo_gpu.py` (`--acc`, `--kandidaten`) call `nr_seq.py` instead of `blastdbcmd`. "
+         "Done on 2026-09-24; `api.php` runs as user www-data, so `nr_seq.py` sets `HOME` itself."),
+        ("`~/blastdb` ist leer, die BLAST-nr nicht mehr vorhanden.",
+         "`~/blastdb` is empty, the BLAST nr is gone."),
+        ("`nr_full.dmnd` liegt auf der System-NVMe: `/home/gh/diamond/nr_full.dmnd` ist die maßgebliche Datei. "
+         "Worker, `diamond_append.py`, `nr_daily_delta.py`, `dmnd_getseq.py` und `blast_release.dmnd_datei` zeigen "
+         "darauf; die Kopie auf `/mnt/archive` (sda5) heißt `NICHT_VERWENDEN_nr_full.dmnd.alt_nutze_home_gh_diamond`, "
+         "damit sie nicht irrtümlich benutzt wird. Der Hash-Cache `nr_seq_hashes.npy` liegt weiter auf `/mnt/archive`.",
+         "`nr_full.dmnd` lives on the system NVMe: `/home/gh/diamond/nr_full.dmnd` is the authoritative file. "
+         "Worker, `diamond_append.py`, `nr_daily_delta.py`, `dmnd_getseq.py` and `blast_release.dmnd_datei` point "
+         "to it; the copy on `/mnt/archive` (sda5) is named `NICHT_VERWENDEN_nr_full.dmnd.alt_nutze_home_gh_diamond` "
+         "so it is not used by mistake. The hash cache `nr_seq_hashes.npy` still lives on `/mnt/archive`."),
     ])
+
+    d.h2("X-Maskierung und NCBI-Fallback (`nr_seq.py`)", "X masking and NCBI fallback (`nr_seq.py`)")
+    d.p("`makedb` maskiert Bereiche niedriger Komplexität hart zu X, das Original steht nicht in der .dmnd "
+        "(gemessen: 1,97 % der Residuen, 14,5 % der Sequenzen). Die vorgesehene Rückholtabelle `blast_mask` "
+        "(`nr_mask_build.py`) gibt es nicht: sie braucht einen Lauf durch die BLAST-nr, die nicht mehr existiert. "
+        "`nr_seq.py` löst das pro Anfrage: Accession → OID (`blast_acc`), Satz aus der .dmnd. Enthält die Sequenz "
+        "ein X, oder kennt `blast_acc` die Accession nicht, kommt das Original per NCBI-`efetch` (eine Accession, "
+        "wenige kB, Frist 40 s, höchstens 3 Anfragen je Sekunde). Übernommen wird nur eine Sequenz gleicher Länge, "
+        "die außerhalb der X-Stellen identisch ist; sonst bleibt die maskierte Sequenz und stderr warnt. "
+        "Aufruf: `nr_seq.py P02766.1 --range 20-70` (1-basiert, beide Enden inklusiv); als Modul `aus_nr(acc)`.",
+        "`makedb` hard-masks low-complexity regions to X and the original is not in the .dmnd (measured: 1.97 % of "
+        "residues, 14.5 % of sequences). The intended recovery table `blast_mask` (`nr_mask_build.py`) does not "
+        "exist: it needs a pass through the BLAST nr, which no longer exists. `nr_seq.py` solves this per request: "
+        "accession → OID (`blast_acc`), record from the .dmnd. If the sequence contains an X, or `blast_acc` does "
+        "not know the accession, the original comes from NCBI `efetch` (one accession, a few kB, 40 s limit, at "
+        "most 3 requests per second). Only a sequence of equal length that is identical outside the X positions "
+        "is accepted; otherwise the masked sequence stays and stderr warns. Call: `nr_seq.py P02766.1 --range "
+        "20-70` (1-based, both ends inclusive); as a module `aus_nr(acc)`.")
+
+    d.h2("Speicherbudget der Suche (64 GB RAM)", "Memory budget of the search (64 GB RAM)")
+    d.p("Der dell hat 64 GB RAM, dauerhaft belegt sind ~29 GB (nach Abschalten der nicht genutzten Dienste; MariaDB "
+        "mit 8,6 GB Buffer Pool ist einer der größeren). Eine Suche gegen die volle nr mit der Vorgabe "
+        "`--block-size 2` hält 15 bis 17 GB RSS; das Budget für alles zusammen ist 48 GB. Geplant ist eine "
+        "Suche in zwei Stufen: (1) ein MariaDB-`SELECT` wählt Kandidaten so, dass der Speicherbedarf unter 48 GB "
+        "bleibt (vorgesehen: Taxonomie-Ringe über `blast_acc.taxid`, von der Art der Query nach außen), (2) DIAMOND "
+        "sucht in der Teilmenge; liefert sie weniger als `max_target_seqs` Treffer, folgt der nächste Ring, bis alles "
+        "gefunden ist. Achtung: Die Ergebnisse sind nur so vollständig wie der Ring, in dem sie liegen; der letzte "
+        "Ring ist die volle nr mit `--block-size` als Speicherdeckel. Zuerst wird `--block-size` allein gemessen "
+        "(Skript `diamond_blocksize_test.sh`, Query TTR 20–70).",
+        "The dell has 64 GB RAM, about 29 GB are permanently in use (after shutting down unused services; MariaDB "
+        "with its 8.6 GB buffer pool is one of the larger ones). A search against full nr with the default "
+        "`--block-size 2` holds 15 to 17 GB RSS; the budget for everything together is 48 GB. A two-stage search "
+        "is planned: (1) a MariaDB `SELECT` picks candidates so that the memory need stays below 48 GB (intended: "
+        "taxonomy rings via `blast_acc.taxid`, from the query's species outwards), (2) DIAMOND searches the "
+        "subset; if it yields fewer than `max_target_seqs` hits, the next ring follows until everything is "
+        "found. Caution: results are only as complete as the ring they lie in; the last ring is the full nr with "
+        "`--block-size` as a memory cap. First `--block-size` alone is measured (script "
+        "`diamond_blocksize_test.sh`, query TTR 20–70).")
+    d.p("**Umgesetzt (30.09.2026):** statt Taxonomie-Ringen die Vorauswahl nach Taxon, Länge und Anlagedatum "
+        "(Abschnitt „Vorauswahl über MariaDB“) und die RAM-Planung je Suche (Abschnitt „RAM-Planung jeder "
+        "Suche“): Grenze aus dem tatsächlich freien Speicher, `--block-size` passend gewählt.",
+        "**Implemented (2026-09-30):** instead of taxonomy rings, the pre-selection by taxon, length and creation "
+        "date (section “Pre-selection via MariaDB”) and the memory planning per search (section “Memory planning "
+        "for every search”): limit from the memory actually free, `--block-size` chosen to fit.")
+
+    d.h2("Test der API (extern)", "Testing the API (external)")
+    d.p("Ein Test zählt nur, wenn er von außen läuft: `ssh gh@heissa.de curl 'https://yt.heissa.de/blast/api.php?r=…'`. "
+        "Vom dell oder Arbeitsplatz aus löst `yt.heissa.de` nicht auf; ein Aufruf gegen `localhost` mit `--resolve` "
+        "prüft nur den Server, nicht den Weg dorthin.",
+        "A test only counts if it runs from outside: `ssh gh@heissa.de curl 'https://yt.heissa.de/blast/api.php?r=…'`. "
+        "From the dell or a workstation `yt.heissa.de` does not resolve; a call to `localhost` with `--resolve` "
+        "tests only the server, not the path to it.")
 
     d.h1("Mögliche nächste Stufe", "Possible next step")
     d.p("Falls DIAMOND bei sehr entfernten Homologien nicht ausreicht: Zwei-Stufen-Suche über Protein-Embeddings, "
@@ -1330,6 +1705,192 @@ python3 spike_amyloid_test.py --auswerten
         "MariaDB VECTOR with HNSW index, embedding server on the P4): store sequences as vectors, prefilter with "
         "`VEC_DISTANCE_COSINE`, then check only the candidates exactly with DIAMOND/BLAST. The ESM-2 650M "
         "environment from section 8 already produces such embeddings.")
+
+
+def BAU_TEXT(d, b):
+    """Abschnitt 4.1: gemessener Durchsatz der Erstbefuellung, alle Zahlen aus bau_bench()."""
+    d.h2("Durchsatz der Erstbefüllung", "Throughput of the initial build")
+    if not b:
+        d.p("Noch keine Messwerte in `blast_import`.", "No measurements in `blast_import` yet.")
+        return
+    N = lambda x, nk=0: num(d.lang, x, nk)                                       # noqa: E731
+    w, seq, acc = b["wand_s"], b["seq"], b["acc"]
+    lauf = f"{int(w // 3600)}:{int(w % 3600 // 60):02d} h"
+    d.p(f"Gemessen am Bau vom {b['start']:%d.%m.%Y %H:%M} Uhr, gelesen beim Erzeugen dieses PDFs aus "
+        f"`blast_import` und `nr_build.log`. Ein einziger `blastdbcmd`-Strom versorgt `makedb` "
+        f"({N(b.get('threads') or 0)} Threads) und den Ladethread gleichzeitig; die Werte gelten also für "
+        f"beide Ziele zusammen, nicht für `makedb` allein."
+        + ("" if b.get("fertig_h") else f" Der Bau lief beim Erzeugen noch, Stand ist der {N(b['chunks'])}. "
+                                        f"Chunk um {b['letzt']:%H:%M} Uhr."),
+        f"Measured on the build of {b['start']:%Y-%m-%d %H:%M}, read from `blast_import` and `nr_build.log` "
+        f"when this PDF was generated. A single `blastdbcmd` stream feeds `makedb` "
+        f"({N(b.get('threads') or 0)} threads) and the loader thread at the same time, so these figures cover "
+        f"both targets together, not `makedb` alone."
+        + ("" if b.get("fertig_h") else f" The build was still running; the figures are the state after chunk "
+                                        f"{N(b['chunks'])} at {b['letzt']:%H:%M}."))
+    zeilen = [
+        [("Laufzeit", "Elapsed"), lauf + (f" ({N(b['fertig_h'], 1)} h" + d.T(" gesamt)", " in total)")
+                                          if b.get("fertig_h") else d.T(" bisher", " so far"))],
+        [("Sequenzen", "Sequences"), N(seq) + (f" ({N(100 * seq / b['nr_seq'], 1)} % "
+                                               + d.T("der nr)", "of nr)") if b.get("nr_seq") else "")],
+        [("Deflines (`blast_acc`)", "Deflines (`blast_acc`)"), N(acc)],
+        [("Sequenzen/s", "Sequences/s"), N(seq / w)],
+        [("Deflines/s", "Deflines/s"), N(acc / w)],
+    ]
+    if b.get("nr_res") and b.get("nr_seq"):
+        mittel = b["nr_res"] / b["nr_seq"]
+        zeilen.append([("Residuen/s (rechnerisch)", "Residues/s (derived)"),
+                       N(seq / w * mittel / 1e6, 1) + d.T(" Mio., mittlere Länge ", " M, mean length ")
+                       + N(mittel) + " aa"])
+    if b.get("dmnd_b"):
+        zeilen.append([("`nr_full.dmnd`", "`nr_full.dmnd`"),
+                       N(b["dmnd_b"] / 1e9, 1) + " GB, " + N(b["dmnd_b"] / w / 1e6) + " MB/s"])
+    if b.get("pos_b"):
+        zeilen.append([("`nr_full.dmnd.pos_tmp`", "`nr_full.dmnd.pos_tmp`"),
+                       N(b["pos_b"] / 1e9, 1) + d.T(" GB (16 Byte je Sequenz)", " GB (16 bytes per sequence)")])
+    if b.get("rss_kb"):
+        zeilen.append([("`makedb` RSS", "`makedb` RSS"),
+                       N(b["rss_kb"] / 1e6, 1) + d.T(" GB (der `vector` hätte hier ~51 GB gebraucht)",
+                                                     " GB (the `vector` would have needed ~51 GB here)")])
+    zeilen += [
+        [("Chunk (5 Mio. Sequenzen) nach MariaDB", "Chunk (5 M sequences) into MariaDB"),
+         N(b["lade_s"] / b["chunks"]) + " s (" + N(b["s_min"]) + "–" + N(b["s_max"]) + " s)"],
+        [("Ladethread belegt", "Loader thread busy"), N(100 * b["lade_s"] / w, 1) + " % "
+         + d.T("der Laufzeit", "of the elapsed time")],
+    ]
+    if b.get("wartend"):
+        zeilen.append([("Chunk-Dateien auf der NVMe", "Chunk files on the NVMe"),
+                       N(b["wartend"]) + " (" + N(b["wartend_b"] / 1e9, 1) + " GB)"
+                       + (d.T(f", Warteschlange voll (Grenze {N(b['warteschlange'])})",
+                              f", queue full (bound {N(b['warteschlange'])})")
+                          if b.get("warteschlange") and b["wartend"] > b["warteschlange"] else "")])
+    if b.get("cpu"):
+        k = b["cpu"]
+        zeilen.append([(f"CPU der Maschine (sar, {k['zeit']})", f"Machine CPU (sar, {k['zeit']})"),
+                       N(k["user"], 1) + " % user, " + N(k["nice"], 1) + " % nice, " + N(k["system"], 1)
+                       + " % system, " + N(k["iowait"], 1) + " % iowait, " + N(k["idle"], 1) + " % idle"])
+    if b.get("last"):
+        zeilen.append([("Last (1/5/15 min)", "Load average (1/5/15 min)"),
+                       " / ".join(N(x, 2) for x in b["last"])
+                       + d.T(f" bei {N(os.cpu_count())} Threads", f" on {N(os.cpu_count())} threads")])
+    if b.get("leer") is not None:
+        zeilen.append([("Leersequenzen", "Empty sequences"), N(b["leer"])])
+    d.tabelle([("Größe", "Quantity"), ("Wert", "Value")], zeilen, [6.0, 8.0])
+    d.p(f"Der Ladethread ist {N(100 * b['lade_s'] / w, 1)} % der Laufzeit beschäftigt – er wartet dabei "
+        f"überwiegend auf MariaDB. Der Speicherbedarf von `makedb` bleibt über den ganzen Bau flach; genau "
+        f"das ist der Zweck des Patches aus Abschnitt 4.",
+        f"The loader thread is busy {N(100 * b['lade_s'] / w, 1)} % of the elapsed time – most of it spent "
+        f"waiting for MariaDB. `makedb` memory stays flat across the whole build, which is the point of the "
+        f"patch in section 4.")
+    d.p("**Was begrenzt, ist MariaDB – nicht DIAMOND.** Eine Messung über 5 s (`/proc/<tid>/stat` und `wchan`, "
+        "23.09.2026 16:11) fand alle Stufen außer einer im Wartezustand: `nr_build.py` 0 % in `futex_do_wait` "
+        "an der vollen Warteschlange, der Ladethread 0 % in `wait_woken` am MariaDB-Socket, `makedb` 0 % in "
+        "`anon_pipe_read`, `blastdbcmd` 0 % in `anon_pipe_write`. Allein `mariadbd` lief mit 100 % an einem "
+        "`LOAD DATA LOCAL INFILE`. Dazu passt die Warteschlange: sie ist voll, die Chunk-Dateien stehen "
+        "abholbereit auf der NVMe, und der Strom wird gebremst – so, wie es gedacht ist.",
+        "**MariaDB is the limit, not DIAMOND.** A measurement over 5 s (`/proc/<tid>/stat` and `wchan`, "
+        "2026-09-23 16:11) found every stage but one waiting: `nr_build.py` 0 % in `futex_do_wait` on the full "
+        "queue, the loader thread 0 % in `wait_woken` on the MariaDB socket, `makedb` 0 % in `anon_pipe_read`, "
+        "`blastdbcmd` 0 % in `anon_pipe_write`. Only `mariadbd` was running, at 100 %, on a single "
+        "`LOAD DATA LOCAL INFILE`. The queue agrees: it is full, the chunk files sit ready on the NVMe and the "
+        "stream is throttled – exactly as intended.")
+    d.p("Deshalb liegt die Maschine weitgehend brach und die Platten auch (NVMe 8 %, sda 11 % Auslastung, "
+        "`iostat`, zur selben Zeit). Der nice-Anteil in der Tabelle oben ist nicht der Bau, sondern der "
+        "AmyloDeep-Worker aus Abschnitt 8, der nebenher den Kontrolllauf rechnet. Eine einzige Verbindung "
+        "schreibt `blast_seq` und `blast_acc`, beide `ROW_FORMAT=COMPRESSED`: jede Seite wird beim Schreiben "
+        "gepackt, und das kostet den Kern. Sekundärindizes entstehen erst nach dem Bau, sie spielen hier noch "
+        "keine Rolle. Die 20 Threads von `makedb` bleiben in dieser Phase ohne Wirkung – sie hängen an einer "
+        "Pipe, die ein einzelner Python-Prozess füllt. Schneller würde der Bau also an der Metadatenseite, "
+        "nicht an DIAMOND: mehrere Ladeverbindungen mit getrennten OID-Bereichen oder unkomprimierte Tabellen "
+        "mit späterem Packen. Beides ist nicht gemessen.",
+        "That is why the machine lies largely idle, and the disks with it (NVMe 8 %, sda 11 % utilisation, "
+        "`iostat`, at the same time). The nice share in the table above is not the build but the AmyloDeep "
+        "worker of section 8, computing the control run alongside. A single connection writes `blast_seq` and "
+        "`blast_acc`, both `ROW_FORMAT=COMPRESSED`: every page is compressed as it is written, and that is what "
+        "costs the core. Secondary indexes are built afterwards and play no part yet. The 20 threads of "
+        "`makedb` have no effect in this phase – they hang on a pipe fed by a single Python process. So the "
+        "build would get faster on the metadata side, not on DIAMOND: several loader connections on disjoint "
+        "OID ranges, or uncompressed tables compressed later. Neither has been measured.")
+
+
+def GPU_TEXT(d, g):
+    """Abschnitt 8.7: gemessener Durchsatz der Tesla P4, alle Zahlen aus gpu_bench()."""
+    d.h2("Durchsatz auf der P4", "Throughput on the P4")
+    if not g:
+        d.p("Noch zu wenige Aufträge in `amyl_lauf` für eine Messung.",
+            "Too few jobs in `amyl_lauf` for a measurement yet.")
+        return
+    N = lambda x, nk=0: num(d.lang, x, nk)                                       # noqa: E731
+    rate = 1 / g["steig"]
+    d.p(f"{N(g['n'])} Aufträge des Workers stehen mit Laufzeit in `amyl_lauf`, zusammen {N(g['fenster'])} "
+        f"Fenster in {N(g['sekunden'] / 60)} min. Die Laufzeit hängt linear an der Fensterzahl "
+        f"(R² = {N(g['r2'], 4)}), eine Ausgleichsgerade trennt daher sauber den festen Anteil je Auftrag vom "
+        f"Rechenanteil je Fenster.",
+        f"{N(g['n'])} worker jobs in `amyl_lauf` carry a run time, {N(g['fenster'])} windows in "
+        f"{N(g['sekunden'] / 60)} min altogether. Run time is linear in the number of windows "
+        f"(R² = {N(g['r2'], 4)}), so a least-squares line cleanly separates the fixed cost per job from the "
+        f"compute cost per window.")
+    d.code(f"t = {N(g['achse'], 2)} s + {N(g['steig'], 4)} s " + d.T("* Fenster", "* windows"))
+    zeilen = [
+        [("Fenster/s (Steigung)", "Windows/s (slope)"), N(rate, 2)],
+        [("je Fenster", "per window"), N(1000 * g["steig"]) + " ms"],
+        [("fest je Auftrag", "fixed per job"), N(g["achse"], 2) + " s"],
+        [("Fenster/s je Auftrag", "Windows/s per job"),
+         N(g["min"], 2) + "–" + N(g["max"], 2) + d.T(", Median ", ", median ") + N(g["med"], 2)],
+        [("Protein mit 1.000 Resten", "1,000-residue protein"),
+         d.T("rund ", "about ") + N(1000 * g["steig"]) + " s"],
+    ]
+    if g.get("stapel"):
+        s = g["stapel"]
+        zeilen.append([(f"Stapel: {N(s['n_seq'])} Sequenzen in einem Aufruf",
+                        f"Batch: {N(s['n_seq'])} sequences in one call"),
+                       N(s["fenster"] / s["sekunden"], 2) + d.T(" Fenster/s", " windows/s")])
+    d.tabelle([("Größe", "Quantity"), ("Wert", "Value")], zeilen, [6.0, 8.0])
+    d.p("Ein Fenster je Restposition: Fenster/s und Reste/s sind damit praktisch dasselbe. Der feste Anteil je "
+        "Auftrag ist klein, weil die Modelle im Worker geladen bleiben – ein Aufruf von `amylo_gpu.py` zahlt "
+        "stattdessen jedes Mal die Ladezeit aus 8.6."
+        + (" Ein Stapel mehrerer Sequenzen in einem Aufruf bringt nichts mehr: die P4 ist schon mit den "
+           "Fenstern einer einzigen Sequenz ausgelastet." if g.get("stapel") else ""),
+        "One window per residue position, so windows/s and residues/s are practically the same. The fixed cost "
+        "per job is small because the models stay loaded in the worker – a call to `amylo_gpu.py` pays the "
+        "load time from 8.6 every time instead."
+        + (" Batching several sequences into one call gains nothing further: the P4 is already saturated by the "
+           "windows of a single sequence." if g.get("stapel") else ""))
+    if g.get("kampagne"):
+        k = g["kampagne"]
+        von, bis = k["von"], k["bis"]
+        tag = von.strftime("%d.%m.%Y") if d.lang == "de" else von.strftime("%Y-%m-%d")
+        zeit = von.strftime("%H:%M") + "–" + bis.strftime("%H:%M")
+        ausl = 100 * k["rechen"] / k["spanne"]
+        d.p(f"Die Ausgleichsgerade misst einzelne Aufträge. Ob die Kette aus API, Warteschlange und Worker "
+            f"auch unter Dauerlast trägt, zeigt erst ein ganzer Durchlauf: am {tag} liefen {N(k['n'])} "
+            f"Aufträge von {zeit} am Stück durch, {N(k['fertig'])} fertig, {N(k['fehler'])} gescheitert.",
+            f"The least-squares line measures single jobs. Whether the chain of API, queue and worker also "
+            f"holds up under sustained load only shows in a full run: on {tag}, {N(k['n'])} jobs ran back to "
+            f"back from {zeit}, {N(k['fertig'])} done, {N(k['fehler'])} failed.")
+        d.tabelle([("Größe", "Quantity"), ("Wert", "Value")], [
+            [("Wanduhr", "Wall clock"), N(k["spanne"] / 3600, 2) + " h"],
+            [("Rechenzeit auf der P4", "Compute time on the P4"), N(k["rechen"] / 3600, 2) + " h"],
+            [("Auslastung des Workers", "Worker utilisation"), N(ausl, 1) + " %"],
+            [("Durchsatz", "Throughput"),
+             N(k["n"] / (k["spanne"] / 3600), 1) + d.T(" Aufträge/h", " jobs/h")],
+            [("Wartezeit in der Schlange", "Time spent queued"),
+             d.T("im Mittel ", "mean ") + N(k["warte"]) + d.T(" s, längstens ", " s, at most ")
+             + N(k["warte_max"]) + " s"],
+        ], [6.0, 8.0])
+        d.p(f"Bei {N(ausl, 1)} % Auslastung lief die Warteschlange über {N(k['spanne'] / 3600, 2)} h nie leer: "
+            f"der Engpass ist die P4, nicht die API und nicht die Einreichung. Kein Auftrag ging verloren, die "
+            f"Wartezeit blieb unter {N(k['warte_max'])} s – der Worker arbeitet die Schlange so schnell ab, "
+            f"wie sie gefüllt wird.",
+            f"At {N(ausl, 1)} % utilisation the queue never ran dry over {N(k['spanne'] / 3600, 2)} h: the "
+            f"bottleneck is the P4, not the API and not the submission side. No job was lost and the wait "
+            f"stayed below {N(k['warte_max'])} s – the worker drains the queue as fast as it is filled.")
+    d.p("Gegen die CPU-Fassung (Abschnitt 8.3, Aβ42: 4,4 s gegen 43,4 s) ist das etwa das Zehnfache. Alle "
+        "Zahlen gelten für Fenster der Größe 10; die P4 ist dabei zu 100 % ausgelastet und zieht 55–65 W bei "
+        "75–77 °C (nvidia-smi, 23.09.2026).",
+        "Against the CPU version (section 8.3, Aβ42: 4.4 s vs. 43.4 s) that is roughly a factor of ten. All "
+        "figures are for windows of size 10; the P4 runs at 100 % utilisation and draws 55–65 W at 75–77 °C "
+        "(nvidia-smi, 2026-09-23).")
 
 
 def AMYL_TEXT(d, amyl):
@@ -1369,10 +1930,10 @@ def AMYL_TEXT(d, amyl):
 
 # ------------------------------------------------------------------ Bau
 
-def bauen(lang, amyl, spike, bilder):
+def bauen(lang, amyl, spike, bench, bilder):
     dbg(f"{lang}: Text zusammenbauen")
     d = Doku(lang, bilder)
-    inhalt(d, amyl, spike)
+    inhalt(d, amyl, spike, bench)
     kopf = KOPF % {
         "babel": "ngerman" if lang == "de" else "english",
         "titel_pdf": "BLAST zu DIAMOND: Konzept" if lang == "de" else "BLAST to DIAMOND: concept",
@@ -1410,6 +1971,9 @@ if __name__ == "__main__":
     dbg(f"amyl_ergebnis: {len(amyl['seqs']) if amyl else 0} Zeilen")
     spike = spike_test()
     dbg(f"spike_test: {'da' if spike else 'noch nicht gerechnet'}")
+    bench = {"bau": bau_bench(), "gpu": gpu_bench()}
+    dbg(f"bau_bench: {bench['bau']['chunks'] if bench['bau'] else 0} Chunks, "
+        f"gpu_bench: {bench['gpu']['n'] if bench['gpu'] else 0} Auftraege")
     with tempfile.TemporaryDirectory() as er_tmp:
         try:
             sys.path.insert(0, os.path.expanduser("~/python"))
@@ -1423,4 +1987,4 @@ if __name__ == "__main__":
             print(f"ER-Diagramme: nicht erzeugt ({e})", file=sys.stderr)
             bilder = {}
         for lang in ("de", "en"):
-            bauen(lang, amyl, spike, bilder)
+            bauen(lang, amyl, spike, bench, bilder)

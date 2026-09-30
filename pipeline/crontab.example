@@ -1,0 +1,5 @@
+# nr updates (crontab of the user that owns the .dmnd); both take the lock ~/.nr_dmnd.lock
+# 03:30 new NCBI nr release -> append new sequences; 04:30 GenBank/RefSeq daily files -> append
+30 3 * * * python3 $HOME/python/diamond_append.py >> $HOME/python/diamond_append.cron.log 2>&1
+30 4 * * * python3 $HOME/python/nr_daily_delta.py >> $HOME/python/nr_daily_delta.cron.log 2>&1
+# optional mail report: MAIL_TO=you@example.org SMTP_HOST=smtp.example.org MAIL_FROM=... MAIL_EHLO=...

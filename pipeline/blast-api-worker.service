@@ -1,0 +1,16 @@
+[Unit]
+Description=DIAMOND-Suchauftraege der BLAST-API (blast_job)
+After=mariadb.service
+
+[Service]
+User=gh
+ExecStart=/usr/bin/python3 /home/gh/python/blast_api_worker.py
+Nice=5
+IOSchedulingClass=best-effort
+Restart=always
+RestartSec=30
+StandardOutput=append:/home/gh/python/blast_api_worker.log
+StandardError=append:/home/gh/python/blast_api_worker.log
+
+[Install]
+WantedBy=multi-user.target
