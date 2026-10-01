@@ -2,6 +2,12 @@
 """Taegliches Delta fuer nr_full.dmnd und blast_* aus
    GenBank daily-nc  (ncMMDD.gnp.gz, GenPept, ~180 Tage vorgehalten) und
    RefSeq daily      (rsnc.MMDD.YYYY.gpff.gz, GenPept, ~21 Tage vorgehalten).
+Since 2026-10-01 this is the only nr update path (diamond_append.py and its full-release
+downloads are retired). It also covers the nr sources the daily files miss:
+   PDB        pdb_seqres.txt.gz (wwPDB, ~67 MB, weekly), protein chains only
+   Swiss-Prot uniprot_sprot.fasta.gz (UniProt, ~94 MB, every ~8 weeks)
+A single-file source counts as a new "daily file" whenever its Last-Modified date changes.
+taxdump (nodes/names) is refreshed when older than TAX_MAX_AGE_D days.
 
 Neu ist ein Protein, dessen Sequenz (blake2b-64 der Grossbuchstaben) weder in nr noch in
 einem frueheren Delta vorkommt - NCBI fuehrt identische Proteine in nr nicht einzeln, ein
@@ -24,13 +30,19 @@ SEQ_CACHE = E("SEQ_CACHE", "/mnt/archive/nr_seq_hashes.npy")
 ACC_CACHE = E("ACC_CACHE", "/mnt/archive/nr_acc_hashes.npy")
 LOG = E("DELTA_LOG", os.path.expanduser("~/python/nr_daily_delta.log"))
 LOCK = E("NR_LOCK", "/home/gh/.nr_dmnd.lock")
-LOCK_WAIT_H = float(E("LOCK_WAIT_H", "12"))   # diamond_append (03:30) kann bei neuem nr-Release Stunden laufen
+LOCK_WAIT_H = float(E("LOCK_WAIT_H", "12"))   # Sperre teilen sich alle nr-Werkzeuge (z.B. Vollneubau)
 TEST_FILES = E("TEST_FILES")       # "quelle|pfad|YYYY-MM-DD,..." statt NCBI-Listing
 NO_MAIL = E("NO_MAIL") == "1"
 SOURCES = {
     "genbank-daily": ("https://ftp.ncbi.nlm.nih.gov/genbank/daily-nc/", r"nc\d{4}\.gnp\.gz"),
     "refseq-daily": ("https://ftp.ncbi.nlm.nih.gov/refseq/daily/", r"rsnc\.\d{4}\.\d{4}\.gpff\.gz"),
 }
+SINGLE_SOURCES = {     # whole file, new version = new Last-Modified date
+    "pdb-seqres": "https://files.wwpdb.org/pub/pdb/derived_data/pdb_seqres.txt.gz",
+    "swissprot": "https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz",
+}
+TAX_URL = "https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz"
+TAX_MAX_AGE_D = float(E("TAX_MAX_AGE_D", "30"))
 MAIL_TO = E("MAIL_TO", "")               # leer = keine Mail
 SMTP_HOST = E("SMTP_HOST", "localhost")
 MAIL_FROM = E("MAIL_FROM", "nr-update@localhost")
@@ -99,6 +111,52 @@ def parse_genpept(path):
                     taxid = int(line.split("taxon:")[1].split('"')[0])
 
 
+def read_fasta(path):
+    """-> (header without '>', sequence str) from a gzip FASTA"""
+    head, seq = None, []
+    with gzip.open(path, "rt", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if line.startswith(">"):
+                if head is not None:
+                    yield head, "".join(seq)
+                head, seq = line[1:].rstrip("\n"), []
+            else:
+                seq.append(line.strip())
+    if head is not None:
+        yield head, "".join(seq)
+
+
+def parse_pdb_seqres(path, datum):
+    """'>101m_A mol:protein length:154  MYOGLOBIN' -> acc 101M_A like nr; nucleic acids skipped,
+    no taxid in this file (0)"""
+    for head, seq in read_fasta(path):
+        parts = head.split(None, 3)
+        if len(parts) < 2 or parts[1] != "mol:protein":
+            continue
+        pdb, _, chain = parts[0].partition("_")
+        yield f"{pdb.upper()}_{chain}", parts[3] if len(parts) > 3 else "", 0, seq.upper().encode(), datum
+
+
+def parse_uniprot(path, datum):
+    """'>sp|P69905|HBA_HUMAN Hemoglobin subunit alpha OS=Homo sapiens OX=9606 GN=HBA1 PE=1 SV=2'
+    -> acc P69905.2 (version = SV, as in nr), title before ' OS=', taxid from OX="""
+    for head, seq in read_fasta(path):
+        ids, _, desc = head.partition(" ")
+        acc = ids.split("|")[1] if ids.count("|") >= 2 else ids
+        sv = re.search(r" SV=(\d+)", desc)
+        ox = re.search(r" OX=(\d+)", " " + desc)
+        yield (f"{acc}.{sv.group(1)}" if sv else acc), desc.split(" OS=")[0], \
+            int(ox.group(1)) if ox else 0, seq.upper().encode(), datum
+
+
+PARSERS = {
+    "genbank-daily": lambda p, d: parse_genpept(p),
+    "refseq-daily": lambda p, d: parse_genpept(p),
+    "pdb-seqres": parse_pdb_seqres,
+    "swissprot": parse_uniprot,
+}
+
+
 def listing():
     """Offene Tagesdateien: [(quelle, url_oder_pfad, datei, datum)] chronologisch."""
     if TEST_FILES:
@@ -112,7 +170,47 @@ def listing():
         html = urllib.request.urlopen(base, timeout=60).read().decode()
         for name, d in re.findall(rf'href="({pat})">[^<]*</a>\s+(\d{{4}}-\d{{2}}-\d{{2}})', html):
             out.append((q, base + name, name, d))
+    for q, url in SINGLE_SOURCES.items():
+        req = urllib.request.Request(url, method="HEAD")
+        lm = urllib.request.urlopen(req, timeout=60).headers["Last-Modified"]
+        d = time.strftime("%Y-%m-%d", time.strptime(lm, "%a, %d %b %Y %H:%M:%S GMT"))
+        out.append((q, url, os.path.basename(url), d))
     return sorted(set(out), key=lambda x: (x[3], x[0], x[2]))
+
+
+def check_gaps(files, done_db):
+    """Daily files are only kept for a limited time (RefSeq ~21 days). Now that the full release
+    no longer fills holes, a gap between the last imported and the oldest listed file is lost data."""
+    warn = []
+    for q in SOURCES:
+        last = max((d for qq, _, d in done_db if qq == q), default=None)
+        avail = min((x[3] for x in files if x[0] == q), default=None)
+        if last and avail and time.mktime(time.strptime(avail, "%Y-%m-%d")) - \
+                time.mktime(time.strptime(last, "%Y-%m-%d")) > 86400 * 1.5:
+            warn.append(f"{q}: last imported {last}, oldest still available {avail}")
+    return warn
+
+
+def refresh_taxdump():
+    """nodes.dmp/names.dmp for diamond --taxonnodes/--taxonnames; formerly refreshed by
+    diamond_append.py with each nr release"""
+    nodes = os.path.join(TAXDIR, "nodes.dmp")
+    if os.path.exists(nodes) and time.time() - os.path.getmtime(nodes) < TAX_MAX_AGE_D * 86400:
+        return
+    tgz = os.path.join(TAXDIR, "taxdump.tar.gz")
+    want = urllib.request.urlopen(TAX_URL + ".md5", timeout=60).read().decode().split()[0]
+    urllib.request.urlretrieve(TAX_URL, tgz + ".part")
+    h = hashlib.md5()
+    with open(tgz + ".part", "rb") as f:
+        for b in iter(lambda: f.read(1 << 24), b""):
+            h.update(b)
+    if h.hexdigest() != want:
+        os.remove(tgz + ".part")
+        raise RuntimeError("taxdump.tar.gz md5 mismatch")
+    os.replace(tgz + ".part", tgz)
+    subprocess.run(["tar", "-xzf", "taxdump.tar.gz", "nodes.dmp", "names.dmp"], cwd=TAXDIR, check=True)
+    os.utime(nodes)                               # tar keeps NCBI's mtime, age counts from download
+    log("taxdump (nodes/names) refreshed")
 
 
 def merge_in_datei(pfad, neu, block=1 << 26):
@@ -216,7 +314,15 @@ def main():
         if alt_state.get("key") and all(tuple(x.split(":")) in done_db for x in alt_state["key"].split("|")):
             alter_lauf_abschliessen(alt_state, done_db)
     start = str(nr[0])[:10]
-    pending = [x for x in listing() if x[3] >= start and (x[0], x[2], x[3]) not in done_db]
+    files = listing()
+    gaps = check_gaps(files, done_db)
+    if gaps:
+        log("WARNING gap in daily files: " + "; ".join(gaps))
+        try:
+            mail("nr-Tagesdelta: Luecke in den Tagesdateien", "\n".join(gaps))
+        except Exception:
+            pass
+    pending = [x for x in files if x[3] >= start and (x[0], x[2], x[3]) not in done_db]
     if not pending:
         log(f"Keine offenen Tagesdateien seit nr-Stand {start}, Ende")
         return
@@ -241,7 +347,7 @@ def main():
             urllib.request.urlretrieve(src, path + ".part")
             os.replace(path + ".part", path)
         t0 = time.time()
-        recs = [r for r in parse_genpept(path) if r[3]]
+        recs = [r for r in PARSERS[q](path, d) if r[3]]
         hashes = [h64(r[3]) for r in recs]
         in_nr = in_sorted(known, hashes)
         n_new = n_dup_nr = n_dup_run = letters = 0
@@ -276,6 +382,7 @@ def main():
 
     total_new = sum(s["neu"] for s in per_file)
     if total_new and not state.get("dmnd_done"):
+        refresh_taxdump()
         mp = os.path.join(WORK, "delta_map.tsv")
         with open(mp, "w") as out:
             out.write("accession.version\ttaxid\n")

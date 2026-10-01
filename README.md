@@ -53,8 +53,8 @@ and `dmnd_getseq` from there); on the reference machine that is `~/python`.
 
 | Script | Runs | What it does |
 |--------|------|--------------|
-| `diamond_append.py` | cron 03:30 | new NCBI nr release: downloads the volumes one by one (md5-checked), finds sequences none of whose accessions are known yet, appends them with `makedb --append`, writes the metadata in one transaction |
-| `nr_daily_delta.py` | cron 04:30 | GenBank `daily-nc` and RefSeq `daily` files since the release: drops every protein whose sequence (blake2b-64 of the residues) is already present, appends the rest in one `--append`, records each file as a release row with its NCBI date |
+| `nr_daily_delta.py` | cron 04:30 | **the only regular update since 2026-10-01.** GenBank `daily-nc` and RefSeq `daily` files since the release, plus wwPDB `pdb_seqres.txt.gz` (~67 MB, protein chains) and UniProt `uniprot_sprot.fasta.gz` (~94 MB) whenever their Last-Modified date changes: drops every protein whose sequence (blake2b-64 of the residues) is already present, appends the rest in one `--append`, records each file as a release row with its date; refreshes taxdump (nodes/names) every 30 days and mails a warning when daily files expired before they were imported (RefSeq keeps them ~21 days). Flow chart: [`doc/append_workflow.pdf`](doc/append_workflow.pdf) |
+| `diamond_append.py` | by hand only | full reconciliation against a new NCBI nr release — downloads all ~176 volumes (`nr.000` alone is 51 GB because it carries the shared LMDB files) plus `prot.accession2taxid.FULL` (26 GB); no longer in cron. New nr release: downloads the volumes one by one (md5-checked), finds sequences none of whose accessions are known yet, appends them with `makedb --append`, writes the metadata in one transaction |
 | `filter_nonempty.py` | helper | drops empty sequences before `makedb` (it rejects them) |
 | `blast_createdate_fill.py` | by hand | NCBI creation date (`esummary createdate`) per sequence into `blast_seq_ncbi` |
 | `blast_ncbi_backfill.py` | by hand | date backfill for sequences of the nr release from the GenBank daily files |
@@ -67,7 +67,7 @@ and `dmnd_getseq` from there); on the reference machine that is `~/python`.
 
 Both update scripts share the lock `~/.nr_dmnd.lock` with the worker (exclusive for appends, shared
 for searches), so the `.dmnd` never changes under a running search. The daily delta waits up to 12 h
-for the lock (`LOCK_WAIT_H`) when a release append is still running, and finishes a run that died
+for the lock (`LOCK_WAIT_H`) when a manual release append is still running, and finishes a run that died
 after its metadata commit by itself. Hash caches are merged block by block (about 0.8 GB of RAM,
 not 47 GB).
 
@@ -109,7 +109,7 @@ Runtimes and a worked example (daily append, date-filtered SARS-CoV-2 S1/S2 sear
 | `pipeline/` | nr updates (cron), search worker, pre-selection, direct `.dmnd` access |
 | `amyloid/` | the AmyloDeep GPU worker, its job queue and the test scripts |
 | `env/` | the CUDA 11.8 conda environment of the GPU worker |
-| `doc/` | the full documentation as PDF, German and English, and its generator |
+| `doc/` | the full documentation as PDF, German and English, and its generator; `append_workflow.dot/.pdf` the update flow |
 
 ## The API
 
