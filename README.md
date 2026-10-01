@@ -96,6 +96,44 @@ adds its own measurement.
 Runtimes and a worked example (daily append, date-filtered SARS-CoV-2 S1/S2 search) are in
 [`Diamond_append.md`](Diamond_append.md#feature-sample-daily-append-and-a-date-filtered-search).
 
+## Local database vs. NCBI online BLAST
+
+The question "which spike sequences were added to nr in the last 90 days?" asked both ways on
+2026-10-01, with the same query (S1/S2 of SARS-CoV-2 spike, [`examples/sars2_spike_s1s2_query.fa`](examples/sars2_spike_s1s2_query.fa)):
+
+| | Local database (this repo) | NCBI online BLAST (`blastp -remote -db nr`, BLAST+ 2.17.0) |
+|---|---|---|
+| Restrict to the last 90 days | MariaDB `blast_seq_ncbi.createdate`: 2,543,666 sequences in 3.5 s | `-entrez_query "2026/07/03:2026/10/01[PDAT]"`: **aborted by Entrez after 13 s**, no hits; a 7-day window was aborted the same way (14 s) |
+| Restrict by organism only | (not needed) | `-entrez_query "txid11118[ORGN]"` (Coronaviridae): still running after **823 s**, stopped there without a result |
+| Search | `diamond blastp --very-sensitive`: **13 s** (sub-.dmnd cached), **41 s** including building it | — |
+| Result | 1,016 hits on 510 sequences, all hits reported (`--max-target-seqs 0`) | none; online BLAST returns at most 5,000 targets per query |
+| "New" means | new sequence content: the daily delta only appends proteins whose sequence hash is in neither nr nor an earlier delta | new record (publication date); identical sequences under a new accession look new |
+
+The whole job through the [API](#the-api) takes about 2 minutes. For a monitoring question that is
+asked every day, more than 10 minutes per online query with an uncertain outcome is the show stopper.
+
+**When online BLAST is still the better choice.** It needs no infrastructure at all, while the local
+setup needs the full nr (857 GB in BLAST format, 489 GB as `.dmnd`), a machine with about 64 GB of RAM,
+and the update pipeline. For a researcher who asks a few questions, can restrict them by organism,
+and has time to wait, NCBI online BLAST is a good alternative. It stops being one for date-restricted
+questions over all of nr, for searches that must return every hit, and for anything that runs on a
+schedule.
+
+### Best practice: narrow first, then search fine-grained
+
+Both the API worker and [`examples/rep_newseq.py`](examples/rep_newseq.py) use the same two steps:
+
+1. **Narrow** the search set with cheap metadata in MariaDB: creation date, taxon (with all sub-taxa),
+   sequence length. Read just those records from `nr_full.dmnd` through its offset table and build a
+   small sub-database with `diamond makedb` (cached per day and nr state).
+2. **Search fine-grained** in that set: a sensitive DIAMOND mode, every hit, and `--dbsize` set to the
+   letters of the full nr so that E-values stay comparable with a search over all of nr.
+
+Measure the sensitivity mode against your own question rather than defaulting to the highest. For this
+query, `--very-sensitive` (16 seed shapes, 13 s) returned byte-identical hits to `--ultra-sensitive`
+(64 shapes, 41–46 s). Flow chart with the runtime of every step:
+[`examples/rep_newseq_workflow.pdf`](examples/rep_newseq_workflow.pdf).
+
 ## Layout
 
 | Path | What |
