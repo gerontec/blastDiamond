@@ -106,7 +106,7 @@ The question "which spike sequences were added to nr in the last 90 days?" asked
 | Restrict to the last 90 days | MariaDB `blast_seq_ncbi.createdate`: 2,543,666 sequences in 3.5 s | `-entrez_query "2026/07/03:2026/10/01[PDAT]"`: **aborted by Entrez after 13 s**, no hits; a 7-day window was aborted the same way (14 s) |
 | Restrict by organism only | (not needed) | `-entrez_query "txid11118[ORGN]"` (Coronaviridae): still running after **823 s**, stopped there without a result |
 | Search | `diamond blastp --very-sensitive`: **13 s** (sub-.dmnd cached), **41 s** including building it | — |
-| Result | 1,016 hits on 510 sequences, all hits reported (`--max-target-seqs 0`) | none; online BLAST returns at most 5,000 targets per query |
+| Result | 1,016 hits on 510 sequences, all hits reported (`--max-target-seqs 0`) | none; online BLAST returns at most 5,000 targets per query, while nr holds 948,665 distinct SARS-CoV-2 sequences of spike length (1,200–1,300 aa, out of 5,428,097 SARS-CoV-2 sequences; counted in MariaDB in 9 s) |
 | "New" means | new sequence content: the daily delta only appends proteins whose sequence hash is in neither nr nor an earlier delta | new record (publication date); identical sequences under a new accession look new |
 
 The whole job through the [API](#the-api) takes about 2 minutes. For a monitoring question that is
