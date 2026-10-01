@@ -143,6 +143,26 @@ Query: SARS-CoV-2 spike (YP_009724390.1) split into S1 (residues 14–685, 672 a
 
 All 1,016 hits with metadata and the original subject sequences: [`examples/sars2_spike_s1s2_new100_2026-09-30.csv`](examples/sars2_spike_s1s2_new100_2026-09-30.csv) (query: [`examples/sars2_spike_s1s2_query.fa`](examples/sars2_spike_s1s2_query.fa)).
 
+The same question as a report script, 90 days, measured 2026-10-01
+([`examples/rep_newseq.py`](examples/rep_newseq.py), flow chart with the runtime of every step:
+[`examples/rep_newseq_workflow.pdf`](examples/rep_newseq_workflow.pdf)):
+
+| Step | Time |
+|------|------|
+| Select OIDs in MariaDB (`createdate` within 90 days → 2,543,666 sequences) | 3.5 s |
+| Read 1.08 billion letters from `nr_full.dmnd` | 20.2 s |
+| `diamond makedb` of the subset (cached per day afterwards) | 3.9 s |
+| `diamond blastp --very-sensitive` (16 shapes, peak RSS 2.8 GB) | 13.0–13.1 s |
+| `diamond blastp --ultra-sensitive` (64 shapes, peak RSS 1.9 GB) | 41–46 s |
+| Metadata of the hits from MariaDB | < 0.1 s |
+
+Found: 1,016 hits (S1 506, S2 510) on 510 distinct sequences, 4 of them not SARS-CoV-2 (infectious
+bronchitis virus 2, Alphacoronavirus sp. 1, canine coronavirus 1). `--very-sensitive` and
+`--ultra-sensitive` return byte-identical hits for this query, so the script defaults to the former;
+the cost of `--ultra-sensitive` is the 4x larger number of seed shapes (reference histograms 18.6 s
+instead of 4.8 s). DIAMOND picks its query-indexed algorithm for two short queries, so
+`--index-chunks 1` has no effect. Hits: [`examples/sars2_spike_s1s2_new90_2026-10-01.csv`](examples/sars2_spike_s1s2_new90_2026-10-01.csv).
+
 For comparison, a `--fast` search of a 51-residue query against all 1.16 billion sequences takes
 895 s at `--block-size 2`.
 

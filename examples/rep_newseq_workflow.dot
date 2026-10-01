@@ -1,0 +1,44 @@
+// rep_newseq.py: SARS-CoV-2 spike S1/S2 vs. nr proteins created in the last 90 days
+// runtimes measured on dell 2026-10-01 (20 threads, Tesla-P4 box, 62 GB RAM)
+// render: dot -Tpdf rep_newseq_workflow.dot -o rep_newseq_workflow.pdf
+digraph rep_newseq {
+    graph [rankdir=TB, fontname="Helvetica", fontsize=11, nodesep=0.35, ranksep=0.4,
+           label="rep_newseq.py - new spike sequences (S1/S2 of YP_009724390.1) among nr proteins created in the last 90 days\nmeasured 2026-10-01 on dell; runtimes in red; total 40.8 s (cold: 27.7 + 13.1) / 13.0 s (pre-selection cached)", labelloc=t];
+    node  [fontname="Helvetica", fontsize=10, shape=box, style="rounded,filled", fillcolor="#eef3fb", color="#4a6fa5"];
+    edge  [fontname="Helvetica", fontsize=9, color="#555555"];
+
+    start [label="python3 ~/rep_newseq.py --days 90", shape=oval, fillcolor="#dde8d4", color="#5a8a3a"];
+    query [label="query: examples/sars2_spike_s1s2_query.fa\nS1 = 14-685 (672 aa), S2 = 686-1273 (588 aa)", shape=note, fillcolor="#fff6dd", color="#b08a2e"];
+    lock  [label=<flock ~/.nr_dmnd.lock SHARED<br/>(no append while the .dmnd is read)<br/><font color="#b02020">0.0 s</font>>];
+
+    subgraph cluster_pre {
+        label=<dmnd_preselect.preselect(new_days=90)   <font color="#b02020">27.7 s cold, 0.0 s cache hit</font>>; fontsize=10; style="rounded"; color="#4a6fa5";
+        cache [label="sub-.dmnd for (criteria, dmnd_hash, day)\nalready in ~/diamond/preselect?", shape=diamond, fillcolor="#fbeaea", color="#a54a4a"];
+        oids  [label=<MariaDB: blast_seq_ncbi.createdate &gt;= today - 90 d<br/>(idx_createdate)<br/><font color="#b02020">3.5 s -&gt; 2,543,666 OIDs</font>>];
+        fasta [label=<read records from nr_full.dmnd (489 GB)<br/>via its offset table (dmnd_getseq)<br/><font color="#b02020">20.2 s -&gt; 1,084,065,391 letters</font>>];
+        mkdb  [label=<diamond makedb -&gt; sub-.dmnd (1.17 GB)<br/><font color="#b02020">3.9 s</font>>, fillcolor="#e4def5", color="#6a4fa5"];
+    }
+
+    subgraph cluster_dia {
+        label=<diamond blastp --very-sensitive, 1 reference block (--block-size 2)   <font color="#b02020">13.0-13.1 s, peak RSS 2.8 GB</font>>; fontsize=10; style="rounded"; color="#6a4fa5";
+        algo  [label=<algorithm chosen by DIAMOND: query-indexed<br/>(2 short queries vs. 1.08 G letters)<br/><font color="#b02020">load reference 0.8 s</font>>, fillcolor="#e4def5", color="#6a4fa5"];
+        hist  [label=<build reference histograms<br/><font color="#b02020">4.8 s</font>>, fillcolor="#e4def5", color="#6a4fa5"];
+        shape [label=<16 seed shapes x (reference seed array<br/>+ hash join + search)<br/><font color="#b02020">~7.4 s</font>>, fillcolor="#e4def5", color="#6a4fa5"];
+        aln   [label=<compute alignments (E &lt;= 0.001, all targets,<br/>--dbsize = letters of the full nr)<br/><font color="#b02020">0.1 s</font>>, fillcolor="#e4def5", color="#6a4fa5"];
+    }
+
+    cmp   [label="--ultra-sensitive (64 shapes): 41-46 s, 1.9 GB\nhistograms 18.6 s + 64 shapes ~21 s\nhits byte-identical to --very-sensitive\n--index-chunks 1: no effect (query-indexed)", shape=note, fillcolor="#f2f2f2", color="#aaaaaa", fontcolor="#555555"];
+    meta  [label=<MariaDB metadata per hit accession:<br/>blast_acc + blast_seq + blast_taxon + blast_seq_ncbi<br/><font color="#b02020">&lt; 0.1 s (510 accessions)</font>>];
+    out   [label=<CSV ~/rep_newseq_YYYY-MM-DD.csv (header: query, DB, parameters, runtimes)<br/>+ summary on stdout>];
+    res   [label="found 2026-10-01: 1,016 hits = S1 506 + S2 510\n510 distinct subject sequences, all created 2026-09\n506 SARS-CoV-2; 4 others in S2 only:\nInfectious bronchitis virus (2), Alphacoronavirus sp. (1), Canine coronavirus (1)", shape=note, fillcolor="#dde8d4", color="#5a8a3a"];
+
+    start -> lock;
+    query -> start [style=dashed, arrowhead=none];
+    lock -> cache;
+    cache -> oids [label="no"];
+    oids -> fasta -> mkdb;
+    cache -> algo [label="yes"];
+    mkdb -> algo;
+    hist -> cmp [style=dashed, arrowhead=none];
+    algo -> hist -> shape -> aln -> meta -> out -> res;
+}

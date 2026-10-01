@@ -314,7 +314,9 @@ def main():
         if alt_state.get("key") and all(tuple(x.split(":")) in done_db for x in alt_state["key"].split("|")):
             alter_lauf_abschliessen(alt_state, done_db)
     start = str(nr[0])[:10]
+    t_list = time.time()
     files = listing()
+    log(f"step listing: {len(files)} files listed in {time.time() - t_list:.1f}s")
     gaps = check_gaps(files, done_db)
     if gaps:
         log("WARNING gap in daily files: " + "; ".join(gaps))
@@ -341,12 +343,14 @@ def main():
         tag = f"{q}_{d}_{name}"
         base = os.path.join(WORK, tag)
         path = base + ".gz"
+        t_dl = time.time()
         if not src.startswith("http"):
             shutil.copy(src, path)
         elif not os.path.exists(path):
             urllib.request.urlretrieve(src, path + ".part")
             os.replace(path + ".part", path)
         t0 = time.time()
+        dl_s = t0 - t_dl
         recs = [r for r in PARSERS[q](path, d) if r[3]]
         hashes = [h64(r[3]) for r in recs]
         in_nr = in_sorted(known, hashes)
@@ -378,11 +382,14 @@ def main():
               "dup_nr": n_dup_nr, "dup_lauf": n_dup_run, "letters": letters, "base": base}
         per_file.append(st)
         log(f"{q} {name} ({d}): {len(recs)} Proteine, {n_new} neu, {n_dup_nr} schon in nr, "
-            f"{n_dup_run} doppelt im Delta ({time.time() - t0:.0f}s)")
+            f"{n_dup_run} doppelt im Delta ({time.time() - t0:.0f}s, download {dl_s:.0f}s)")
 
     total_new = sum(s["neu"] for s in per_file)
     if total_new and not state.get("dmnd_done"):
+        t_tax = time.time()
         refresh_taxdump()
+        log(f"step taxdump check/refresh: {time.time() - t_tax:.1f}s")
+        t_mk = time.time()
         mp = os.path.join(WORK, "delta_map.tsv")
         with open(mp, "w") as out:
             out.write("accession.version\ttaxid\n")
@@ -400,10 +407,12 @@ def main():
         state["dmnd_sequences"] = int([l for l in r.stdout.splitlines() if "Database sequences" in l][0].split()[-1])
         state["dmnd_done"] = True
         json.dump(state, open(state_file, "w"))
-        log(f"Append fertig: {state['dmnd_sequences']} Sequenzen, Hash {state['dmnd_hash']}")
+        log(f"Append fertig: {state['dmnd_sequences']} Sequenzen, Hash {state['dmnd_hash']} "
+            f"(step makedb --append: {time.time() - t_mk:.0f}s)")
 
     # Metadaten: je Tagesdatei eine Release-Zeile und ein OID-Bereich - alles in EINER Transaktion,
     # damit MariaDB nie halb zum dmnd passt (Abbruch -> Rollback, naechster Lauf traegt nach)
+    t_meta = time.time()
     c.connection.autocommit(False)
     c.connection.begin()
     c.execute(f"SELECT COALESCE(MAX(last_oid), -1) + 1, COALESCE(MAX(chunk_no), -1) + 1 FROM {PREFIX}import")
@@ -436,12 +445,15 @@ def main():
         oid += s["neu"]
     c.connection.commit()
     c.connection.autocommit(True)
+    log(f"step metadata transaction: {time.time() - t_meta:.0f}s")
     new_seq_h = list(seen.keys())
 
     del known
+    t_merge = time.time()
     merge_in_datei(SEQ_CACHE, new_seq_h)
     if os.path.exists(ACC_CACHE) and new_acc_h:
         merge_in_datei(ACC_CACHE, new_acc_h)
+    log(f"step hash cache merge: {time.time() - t_merge:.0f}s")
     shutil.rmtree(WORK)
     body = "\n".join(f"{s['quelle']} {s['datei']} ({s['datum']}): {s['records']} Proteine, {s['neu']} neu, "
                      f"{s['dup_nr']} schon in nr, {s['dup_lauf']} doppelt" for s in per_file)

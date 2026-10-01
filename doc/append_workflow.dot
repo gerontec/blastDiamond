@@ -1,15 +1,17 @@
 // nr update workflow since 2026-10-01: nr_daily_delta.py only (diamond_append.py retired)
+// runtimes: last complete run 2026-09-30 (6 daily files, 1.42 M proteins, 871,703 new) and the
+// dry run of the new sources on 2026-10-01; "logged from 02.10" = step timing added 2026-10-01
 // render: dot -Tpdf append_workflow.dot -o append_workflow.pdf
 digraph append_workflow {
     graph [rankdir=TB, fontname="Helvetica", fontsize=11, nodesep=0.35, ranksep=0.4,
-           label="nr update workflow (dell, nr_daily_delta.py, cron 04:30) - since 2026-10-01\nno full-release downloads; diamond_append.py cron disabled", labelloc=t];
+           label="nr update workflow (dell, nr_daily_delta.py, cron 04:30) - since 2026-10-01\nno full-release downloads; diamond_append.py cron disabled\nruntimes in red: run of 2026-09-30 (6 daily files, 871,703 new sequences) and dry run 2026-10-01", labelloc=t];
     node  [fontname="Helvetica", fontsize=10, shape=box, style="rounded,filled", fillcolor="#eef3fb", color="#4a6fa5"];
     edge  [fontname="Helvetica", fontsize=9, color="#555555"];
 
     cron   [label="cron 04:30\nnr_daily_delta.py", shape=oval, fillcolor="#dde8d4", color="#5a8a3a"];
-    lock   [label="flock ~/.nr_dmnd.lock\n(wait up to LOCK_WAIT_H = 12 h)"];
+    lock   [label=<flock ~/.nr_dmnd.lock<br/>(wait up to LOCK_WAIT_H = 12 h)<br/><font color="#b02020">0 s when no other nr job runs</font>>];
     pre    [label="checks:\nlast nr release has dmnd_hash + meta_importiert\nSEQ_CACHE exists, no nr_full.dmnd.append_backup"];
-    resume [label="WORK/state.json from an aborted run?\nalready committed -> merge hashes, clear WORK"];
+    resume [label=<WORK/state.json from an aborted run?<br/>already committed -&gt; merge hashes, clear WORK<br/><font color="#b02020">70 s (24 files, 2.76 M hashes, 30.09.)</font>>];
 
     subgraph cluster_src {
         label="sources (listing)"; fontsize=10; style="rounded,dashed"; color="#999999";
@@ -19,21 +21,21 @@ digraph append_workflow {
         sp  [label="UniProt uniprot_sprot.fasta.gz\n~94 MB, ~8-weekly", fillcolor="#fde8e0", color="#b05a3a"];
     }
 
-    listing [label="listing(): (source, url, file, date)\nsingle files: date = HTTP Last-Modified"];
+    listing [label=<listing(): (source, url, file, date)<br/>single files: date = HTTP Last-Modified<br/><font color="#b02020">logged from 02.10</font>>];
     gaps    [label="check_gaps(): oldest listed daily file\n> last imported + 1 day?", shape=diamond, fillcolor="#fbeaea", color="#a54a4a"];
     gapmail [label="log + mail\n\"Luecke in den Tagesdateien\"", fillcolor="#fbeaea", color="#a54a4a"];
     pending [label="pending = date >= nr release date (2026-09-16)\nand (source, file, date) not in blast_release"];
     none    [label="nothing pending -> end", shape=oval, fillcolor="#eeeeee", color="#888888"];
 
-    perfile [label="per file: download -> parse\nGenPept / pdb_seqres / UniProt FASTA\n-> (acc.version, title, taxid, seq, date)"];
-    dedup   [label="new = blake2b-64(seq) not in SEQ_CACHE\n(nr_seq_hashes.npy) and not seen in this run"];
+    perfile [label=<per file: download -&gt; parse<br/>GenPept / pdb_seqres / UniProt FASTA<br/>-&gt; (acc.version, title, taxid, seq, date)<br/><font color="#b02020">download: 6 daily files ~190 s (30.09.), PDB &lt; 15 s, Swiss-Prot &lt; 18 s</font>>];
+    dedup   [label=<new = blake2b-64(seq) not in SEQ_CACHE<br/>(nr_seq_hashes.npy) and not seen in this run<br/><font color="#b02020">parse + dedup: 6 daily files 35 s (1.42 M proteins)<br/>PDB 132 s (1.10 M chains, cold cache), Swiss-Prot 4 s (576 k)</font>>];
     out     [label="WORK/<file>.fa .map .seq.tsv .acc.tsv .ncbi.tsv"];
 
-    tax     [label="refresh_taxdump(): nodes/names.dmp\nolder than 30 days -> taxdump.tar.gz (~80 MB, md5)"];
-    dmnd    [label="diamond makedb --append (patched, rollback)\n-> nr_full.dmnd, state.dmnd_done", fillcolor="#e4def5", color="#6a4fa5"];
-    meta    [label="ONE MariaDB transaction (wagodb):\nblast_release row per file, blast_seq / blast_acc /\nblast_seq_ncbi via LOAD DATA, blast_import OID range"];
-    caches  [label="merge_in_datei(): SEQ_CACHE + ACC_CACHE\n(blockwise, no union1d)"];
-    done    [label="clear WORK, mail\n\"nr-Tagesdelta: N neue Sequenzen\"", shape=oval, fillcolor="#dde8d4", color="#5a8a3a"];
+    tax     [label=<refresh_taxdump(): nodes/names.dmp<br/>older than 30 days -&gt; taxdump.tar.gz (~80 MB, md5)<br/><font color="#b02020">logged from 02.10; 0 s while younger than 30 days</font>>];
+    dmnd    [label=<diamond makedb --append (patched, rollback)<br/>-&gt; nr_full.dmnd, state.dmnd_done<br/><font color="#b02020">107 s for 871,703 sequences (30.09.)</font>>, fillcolor="#e4def5", color="#6a4fa5"];
+    meta    [label=<ONE MariaDB transaction (wagodb):<br/>blast_release row per file, blast_seq / blast_acc /<br/>blast_seq_ncbi via LOAD DATA, blast_import OID range<br/><font color="#b02020">logged from 02.10</font>>];
+    caches  [label=<merge_in_datei(): SEQ_CACHE + ACC_CACHE<br/>(blockwise, no union1d)<br/><font color="#b02020">logged from 02.10</font>>];
+    done    [label=<clear WORK, mail<br/>"nr-Tagesdelta: N neue Sequenzen"<br/><font color="#b02020">30.09.: start to append done 6.7 min</font>>, shape=oval, fillcolor="#dde8d4", color="#5a8a3a"];
 
     retired [label="retired 2026-10-01:\ndiamond_append.py (full nr release, 176 volumes,\nnr.000 51 GB, prot.accession2taxid.FULL 26 GB)", shape=note, fillcolor="#f2f2f2", color="#aaaaaa", fontcolor="#777777"];
 
