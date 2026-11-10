@@ -315,7 +315,7 @@ case 'acc':
         $st->execute([$acc]);
     } else {
         $st = $db->prepare('SELECT oid, acc, taxid FROM blast_acc WHERE acc LIKE ? ORDER BY acc DESC LIMIT 1');
-        $st->execute([$acc . '.%']);
+        $st->execute([str_replace('_', '\\_', $acc) . '.%']);   // _ is a LIKE wildcard (XP_..., WP_...)
     }
     $a = $st->fetch() ?: fail('accession not in the database', 404);
     $st = $db->prepare('SELECT oid, len AS length, n_acc, title, quelle AS source, datei AS file, nr_stand AS nr_release,

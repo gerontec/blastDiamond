@@ -118,7 +118,8 @@ def oid_zu_acc(c, acc):
     c.execute("SELECT oid FROM blast_acc WHERE acc = %s LIMIT 1", (acc,))
     r = c.fetchone()
     if not r and "." not in acc:
-        c.execute("SELECT oid FROM blast_acc WHERE acc LIKE %s ORDER BY acc LIMIT 1", (acc + ".%",))
+        c.execute("SELECT oid FROM blast_acc WHERE acc LIKE %s ORDER BY acc LIMIT 1",
+                  (acc.replace("_", "\\_").replace("%", "\\%") + ".%",))   # _ and % are LIKE wildcards (XP_...)
         r = c.fetchone()
     return r[0] if r else None
 

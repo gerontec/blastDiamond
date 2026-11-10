@@ -8,6 +8,7 @@
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const result = $("result");
+  const CHEMBL = (app.dataset.chembl || "").replace(/\/+$/, "");   // ChEMBL <-> nr form; empty = no link column
   let pollTimer = null, runSince = null;
 
   // ---------------------------------------------------------------- sequence or accession
@@ -146,13 +147,18 @@
       html += '<div class="table-responsive border rounded"><table class="table table-sm table-hover table-striped align-middle mb-0 sortable"><thead class="table-light"><tr>' +
         "<th>" + esc(t("col_query")) + "</th><th>" + esc(t("col_subject")) + "</th><th>" + esc(t("col_title")) + "</th><th>" + esc(t("col_org")) +
         '</th><th data-num>' + esc(t("col_ident")) + '</th><th data-num>' + esc(t("col_len")) + '</th><th data-num>' + esc(t("col_evalue")) +
-        '</th><th data-num>' + esc(t("col_bits")) + "</th></tr></thead><tbody>";
+        '</th><th data-num>' + esc(t("col_bits")) + "</th>" + (CHEMBL ? "<th>" + esc(t("col_chembl")) + "</th>" : "") +
+        "</tr></thead><tbody>";
+      const lang = new URLSearchParams(location.search).get("lang") || document.documentElement.lang || "de";
       hits.forEach(h => {
         html += "<tr><td class=\"small\">" + esc(h.qseqid) + '</td><td class="small text-nowrap"><a href="https://www.ncbi.nlm.nih.gov/protein/' +
           encodeURIComponent(h.sseqid) + '" target="_blank" rel="noopener">' + esc(h.sseqid) + '</a></td><td class="small">' +
           esc((h.title || "").slice(0, 160)) + '</td><td class="small"><em>' + esc((h.taxa || []).slice(0, 3).join("; ")) + "</em></td>" +
           '<td data-v="' + esc(h.pident) + '">' + esc(h.pident) + '</td><td data-v="' + esc(h.length) + '">' + esc(h.length) +
-          '</td><td data-v="' + esc(h.evalue) + '">' + esc(Number(h.evalue).toExponential(1)) + '</td><td data-v="' + esc(h.bitscore) + '">' + esc(h.bitscore) + "</td></tr>";
+          '</td><td data-v="' + esc(h.evalue) + '">' + esc(Number(h.evalue).toExponential(1)) + '</td><td data-v="' + esc(h.bitscore) + '">' + esc(h.bitscore) + "</td>" +
+          (CHEMBL ? '<td class="small"><a href="' + esc(CHEMBL + "/nr.php?mode=protein&lang=" + encodeURIComponent(lang) +
+            "&q=" + encodeURIComponent(h.sseqid)) + '" target="_blank" rel="noopener" title="' + esc(t("chembl_title")) + '">→</a></td>' : "") +
+          "</tr>";
       });
       html += "</tbody></table></div>";
     }
@@ -204,5 +210,7 @@
     $("qk_acc").checked = true;
     $("qk_acc").dispatchEvent(new Event("change"));
     $("acc").value = qs.get("acc");
+  } else if (qs.get("seq")) {      // a sequence handed over by the ChEMBL <-> nr form (e.g. a venom peptide)
+    $("seq").value = qs.get("seq").slice(0, 20000);
   }
 })();

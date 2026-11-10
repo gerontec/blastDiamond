@@ -37,7 +37,8 @@ def aus_nr(acc):
     c.execute("SELECT oid, acc FROM blast_acc WHERE acc = %s LIMIT 1", (acc,))
     r = c.fetchone()
     if not r and "." not in acc:
-        c.execute("SELECT oid, acc FROM blast_acc WHERE acc LIKE %s ORDER BY acc LIMIT 1", (acc + ".%",))
+        c.execute("SELECT oid, acc FROM blast_acc WHERE acc LIKE %s ORDER BY acc LIMIT 1",
+                  (acc.replace("_", "\\_").replace("%", "\\%") + ".%",))   # _ and % are LIKE wildcards (XP_...)
         r = c.fetchone()
     if not r:
         ncbi = ncbi_efetch(acc)

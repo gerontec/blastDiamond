@@ -9,6 +9,9 @@
  */
 declare(strict_types=1);
 
+// ChEMBL <-> nr form (github.com/gerontec/ChEMBL, web/nr.php): every hit links there; empty = no link
+$CHEMBL_URL = rtrim(getenv('CHEMBL_URL') ?: 'https://chembl.heissa.de', '/');
+
 $lang = (($_GET['lang'] ?? '') === 'en' || (!isset($_GET['lang'])
         && !str_starts_with(strtolower($_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? 'de'), 'de'))) ? 'en' : 'de';
 
@@ -39,6 +42,7 @@ $T = [
   'confirmed' => 'Danke, die Adresse ist bestätigt. Die Vollsuche ist eingereiht; das Ergebnis kommt per Mail.',
   'col_query' => 'Anfrage', 'col_subject' => 'Treffer', 'col_title' => 'Beschreibung', 'col_org' => 'Organismus',
   'col_ident' => 'Identität %', 'col_len' => 'Länge', 'col_evalue' => 'E-Wert', 'col_bits' => 'Bit-Score',
+  'col_chembl' => 'ChEMBL', 'chembl_title' => 'Wirkstoffe zu diesem Protein (ChEMBL, identische Sequenz)',
   'remove' => 'entfernen', 'experts' => 'Für Programme: JSON-API', 'source' => 'Quellcode',
   'data' => 'Daten: NCBI nr (täglich ergänzt). Suche: DIAMOND (Buchfink et al., Nat. Methods 2021).',
   'keep' => 'Link zu diesem Ergebnis:', 'need_presel' => 'Für die Sofort-Suche in der gesamten nr bitte einen Organismus, ein Längenfenster oder „letzte N Tage“ angeben – oder die Datenbank Säugetiere wählen oder die Vollsuche per Mail nutzen.',
@@ -71,6 +75,7 @@ $T = [
   'confirmed' => 'Thank you, the address is confirmed. The full search is queued; the result comes by mail.',
   'col_query' => 'Query', 'col_subject' => 'Hit', 'col_title' => 'Description', 'col_org' => 'Organism',
   'col_ident' => 'Identity %', 'col_len' => 'Length', 'col_evalue' => 'E-value', 'col_bits' => 'Bit score',
+  'col_chembl' => 'ChEMBL', 'chembl_title' => 'Compounds for this protein (ChEMBL, identical sequence)',
   'remove' => 'remove', 'experts' => 'For programs: JSON API', 'source' => 'Source code',
   'data' => 'Data: NCBI nr (extended daily). Search: DIAMOND (Buchfink et al., Nat. Methods 2021).',
   'keep' => 'Link to this result:', 'need_presel' => 'For the instant search in the whole nr please give an organism, a length window or "last N days" – or choose the database Mammals, or use the full search by mail.',
@@ -103,7 +108,7 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data:; style
   </div>
 </nav>
 
-<main class="container mb-5" id="app"
+<main class="container mb-5" id="app" data-chembl="<?= h($CHEMBL_URL) ?>"
   <?php foreach ($T as $k => $v): ?> data-t-<?= h(str_replace('_', '-', $k)) ?>="<?= h($v) ?>"<?php endforeach; ?>>
   <p class="lead"><?= h($T['lead']) ?></p>
   <p><a class="fw-semibold" href="newest.php?lang=<?= $lang ?>">➜ <?= h($T['newest']) ?></a></p>
