@@ -251,7 +251,8 @@ protein that is already known?
 
 Checked against the one human case that is documented in a structure: given the human UBB coding sequence and a
 dinucleotide deletion at a GAGAG motif, the script produces the 95 aa protein UBB+1 (ubiquitin 1-75 plus a 20 aa
-extension), identical to PDB 3K9O chain B as nr holds it. Details and the open points: `todo.md`, section 5.
+extension), identical to PDB 3K9O chain B as nr holds it. The use case is written up with the commands, the measured output and the limits in
+`examples/frameshift_ubb1.md`; the open points are in `todo.md`, section 5.
 
 ## AmyloDeep on the Tesla P4
 
