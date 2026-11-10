@@ -52,7 +52,46 @@ Swiss-Prot. Live: `blast_vf_ref`, `blast_flag_bit` (46 categories, extends itsel
       worth it for the 13.4 million virus sequences of p3 first
 - [ ] the reference set ages; UniProt releases every two months, so `vf_ref_build.py --all` needs a schedule
 
-## 4. Smaller items
+## 5. Frameshift products: what comes out when the ribosome slips (new on 2026-11-10)
+
+`pipeline/frameshift_scan.py` computes the proteins a frameshift in a coding sequence would produce and searches
+them against our databases. Two mechanisms are described for humans, and both give a protein that is normal at
+the front and foreign behind the slip:
+
+- **+1 / -1 ribosomal frameshifting** at runs of the same base. N1-methylpseudouridine, the modified base of mRNA
+  therapeutics, makes the ribosome slip there (Mulroney et al., Nature 625, 189-194, 2024, which also reports
+  T-cell responses against the frameshifted products of BNT162b2 in mice and in humans).
+- **Molecular misreading**: a dinucleotide deletion in the mRNA in or next to a GAGAG motif (van Leeuwen et al.,
+  1998). Its product UBB+1 accumulates in the lesions of Alzheimer's disease.
+
+The script does not claim to know where a ribosome slips. It computes every product a slip at a given kind of
+site would produce, says where the site is, and asks the one question our data can answer: **does that product
+resemble a protein that is already known?** Only the foreign part is searched - the front half would hit the
+normal protein anyway.
+
+**Acceptance test, passed 2026-11-10.** Given only the human UBB coding sequence (NM_018955.4) and
+`--sites gagag --delete 2 --flank 3`, the script produces a 95 aa protein that is **identical to PDB 3K9O chain
+B in nr** (96 aa, "Chain B, Ubiquitin [Homo sapiens]") except for that entry's N-terminal G, which is a remnant
+of the construct: ubiquitin 1-75 plus the 20 aa extension of UBB+1. Two findings on the way, both now in the
+code:
+
+- the deletion that produces the deposited sequence removes **GT three bases behind** the motif, not GA inside
+  it - "in or adjacent to GAGAG motifs" is to be taken literally, hence `--flank` (default 3). Deleting inside
+  the motif gives W at the junction instead of G.
+- a product has to be computed by changing the mRNA and reading it **from the start**, not by reading on behind
+  the site: a deletion moves the frame for everything that follows.
+
+- [ ] run it on the sequence of an mRNA therapeutic (`--sites u-run --shift +1`): the published mechanism is a
+      slip at runs of modified U. The coding sequence has to be supplied as a file, it is not in nr
+- [ ] search the foreign parts against the **whole** nr, not only `p1_mammalia`; at the measured rate that is
+      about 15 minutes per query, so it belongs in a full search by mail rather than ad hoc
+- [ ] the foreign parts are short (20-25 aa). A DIAMOND search finds them only with a relaxed e-value
+      (`--evalue 1` in the test); a proper short-peptide search would use a different tool (PSI-BLAST, HMMER)
+- [ ] `--sites u-run` and `--shift -1` are implemented but have never been run against a real therapeutic mRNA
+- [ ] nothing is written to the database: this is an analysis, not a pipeline. If it becomes one, the products
+      need their own table, not `blast_pathogen_hit`
+
+## 6. Smaller items
 
 - [ ] the worker searches all six parts for a whole-nr search and lets `--taxonlist` filter inside each. With a
       taxon filter it could skip the parts that cannot contain the taxon at all (`blast_part_group`)

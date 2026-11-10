@@ -241,6 +241,18 @@ bacterial virulence factor without being one. And "virulence" is the source's no
 Swiss-Prot also annotates housekeeping proteins that a pathogen needs for an infection (enolase, GroEL,
 glutamine synthetase), so they carry the flag as well.
 
+### Frameshift products: what comes out when the ribosome slips
+
+`pipeline/frameshift_scan.py` computes the proteins that a +1/-1 ribosomal frameshift, or a dinucleotide deletion
+in the mRNA, would produce from a coding sequence, and searches the **foreign part** of each product against the
+reference set, one nr part, or all of nr. It does not claim to know where a ribosome slips; it enumerates the
+products of every site of a given kind and answers the question our data can answer: does the product resemble a
+protein that is already known?
+
+Checked against the one human case that is documented in a structure: given the human UBB coding sequence and a
+dinucleotide deletion at a GAGAG motif, the script produces the 95 aa protein UBB+1 (ubiquitin 1-75 plus a 20 aa
+extension), identical to PDB 3K9O chain B as nr holds it. Details and the open points: `todo.md`, section 5.
+
 ## AmyloDeep on the Tesla P4
 
 `amyloid/` holds a GPU wrapper around AmyloDeep 0.3.1 (ESM-2 650M/150M, UniRep, SVM and XGBoost
