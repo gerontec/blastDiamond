@@ -24,9 +24,13 @@ _NR = {}
 def aus_nr(acc):
     """(versionierte Accession, Sequenz) aus der DIAMOND-nr, oder None."""
     if "c" not in _NR:
-        _NR["d"] = g.Dmnd()
         _NR["c"] = pymysql.connect(**blast_db.cfg())
-        _NR["lk"] = g.luecken(_NR["c"].cursor())
+        if os.path.exists(os.environ["NR_DMND"]):
+            _NR["d"] = g.Dmnd()
+            _NR["lk"] = g.luecken(_NR["c"].cursor())
+        else:                                 # nr_full.dmnd is gone since 2026-11: the nr lives in parts
+            from nr_parts import NrParts
+            _NR["p"] = NrParts(_NR["c"].cursor())
     _NR["c"].ping(reconnect=True)             # der API-Worker laeuft Tage
     c = _NR["c"].cursor()
     # versionierte Accession wie blastdbcmd: exakt, sonst kleinste Version zum Praefix
@@ -41,7 +45,7 @@ def aus_nr(acc):
             print(f"{acc}: nicht in nr und nicht bei NCBI, uebersprungen", file=sys.stderr)
         return ncbi
     oid, vacc = r
-    _, seq = _NR["d"].satz(g.satznummer(oid, _NR["lk"]))
+    _, seq = _NR["p"].record(oid) if "p" in _NR else _NR["d"].satz(g.satznummer(oid, _NR["lk"]))
     try:
         seq = g.flicken(c, oid, seq)
     except pymysql.err.ProgrammingError:      # blast_mask fehlt

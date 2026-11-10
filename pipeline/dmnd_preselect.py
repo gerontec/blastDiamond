@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Pre-selection before a DIAMOND search: instead of searching all of nr_full.dmnd (489 GB), the candidate
-OIDs are selected in MariaDB, their records are read straight from the .dmnd through its offset table
-(dmnd_getseq.Dmnd) and built into a small .dmnd.
+"""Pre-selection before a DIAMOND search: instead of searching all of nr (~480 GB in partial databases), the
+candidate OIDs are selected in MariaDB, their records are read straight from the nr parts through their offset
+tables (nr_parts.NrParts) and built into a small .dmnd.
 
 Criteria (any combination, all must hold):
   --taxon 9606,4751    taxon including all sub-taxa (blast_taxon.parent), via blast_acc.idx_taxid;
@@ -16,17 +16,17 @@ Criteria (any combination, all must hold):
 The sub-.dmnd lives in PRESELECT_DIR, keyed by criteria + dmnd_hash (+ date for --new-days), so every nr
 append invalidates the cache by itself. Files older than 2 days are removed.
 Search it with --dbsize <letters of the full nr> so that E-values stay comparable with a full search.
-Records come as makedb stored them (masked) -- exactly what a full search sees.
+Records come as makedb stored them (SEG-masked) and are not masked again (makedb --no-mask, local DIAMOND
+patch) -- exactly what a full search sees.
 """
 import argparse, fcntl, hashlib, json, os, subprocess, sys, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import blast_db, pymysql, pymysql.cursors
-from dmnd_getseq import Dmnd, luecken as gaps, satznummer as record_no
+from nr_parts import NrParts
 
 E = os.environ.get
-DMND = E("DMND", "/home/gh/diamond/nr_full.dmnd")
-DIAMOND = E("DIAMOND_BIN", os.path.expanduser("~/.local/share/mamba/envs/diamond/bin/diamond"))
+DIAMOND = E("PRESELECT_DIAMOND_BIN", os.path.expanduser("~/build/diamond-master-61bbbe491bed/build/diamond"))  # --no-mask
 PDIR = E("PRESELECT_DIR", "/home/gh/diamond/preselect")
 LOCK = E("NR_LOCK", "/home/gh/.nr_dmnd.lock")
 MAX_SEQ = int(E("PRESELECT_MAX_SEQ", "50000000"))   # above this a sub-.dmnd no longer pays off
@@ -107,8 +107,8 @@ def cleanup():
 def preselect(c, taxon=None, len_min=None, len_max=None, new_days=None, max_seq=MAX_SEQ, threads="20"):
     """-> dict(dmnd, n_seq, letters, dbsize, seconds, cache). The caller holds the lock LOCK."""
     t0 = time.time()
-    c.execute("SELECT dmnd_hash FROM blast_release WHERE quelle='nr' AND aktiv=1 ORDER BY nr_datum DESC LIMIT 1")
-    dhash = c.fetchone()[0]
+    nr = NrParts(c)
+    dhash = nr.hash                                # changes with every daily append: the cache invalidates itself
     crit = {"taxon": sorted(taxon or []), "len_min": len_min, "len_max": len_max, "new_days": new_days,
             "dmnd_hash": dhash, "day": time.strftime("%F") if new_days else None}
     key = hashlib.md5(json.dumps(crit, sort_keys=True).encode()).hexdigest()[:16]
@@ -125,26 +125,23 @@ def preselect(c, taxon=None, len_min=None, len_max=None, new_days=None, max_seq=
     log(f"{len(selected)} OIDs from MariaDB in {t1 - t0:.1f} s")
     if not selected:
         raise NoMatch("no sequence matches the pre-selection")
-    d = Dmnd(DMND)
-    gp = gaps(c)
     fa = os.path.join(PDIR, key + ".fa.tmp")
     letters = 0
     with open(fa, "w") as f:
-        for oid in selected:
-            name, seq = d.satz(record_no(oid, gp))
+        for oid, name, seq in nr.records(selected):
             f.write(f">{name.split()[0]}\n{seq}\n")
             letters += len(seq)
     t2 = time.time()
     log(f"FASTA with {letters} letters in {t2 - t1:.1f} s")
     tmp = os.path.join(PDIR, key + ".tmp")
-    r = subprocess.run([DIAMOND, "makedb", "--in", fa, "-d", tmp, "--threads", str(threads)],
+    r = subprocess.run([DIAMOND, "makedb", "--no-mask", "--in", fa, "-d", tmp, "--threads", str(threads)],
                        capture_output=True, text=True)
     os.remove(fa)
     if r.returncode != 0:
         raise RuntimeError("makedb: " + (r.stderr or r.stdout)[-1000:])
     os.replace(tmp + ".dmnd", target)
     log(f"makedb in {time.time() - t2:.1f} s")
-    m = {"dmnd": target, "n_seq": len(selected), "letters": letters, "dbsize": d.letters, "criteria": crit}
+    m = {"dmnd": target, "n_seq": len(selected), "letters": letters, "dbsize": nr.letters, "criteria": crit}
     json.dump(m, open(meta, "w"))
     m.update(cache=False, seconds=round(time.time() - t0, 1))
     return m

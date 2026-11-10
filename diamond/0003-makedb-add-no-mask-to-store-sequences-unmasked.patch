@@ -1,0 +1,39 @@
+makedb: add --no-mask to store the input sequences unmasked
+
+makedb always SEG-masks its input. When the input comes from a database that is masked
+already (records read back from a .dmnd), masking again turns further residues into X.
+--no-mask skips the masking step. Against DIAMOND master 61bbbe49.
+
+--- a/src/basic/config.h
++++ b/src/basic/config.h
+@@ -328,6 +328,7 @@
+ 	bool heartbeat;
+     bool no_parse_seqids;
+     bool makedb_append;
++    bool makedb_no_mask;
+     bool sam_qlen_field;
+ #ifdef WITH_DNA
+   DNAExtensionAlgo dna_extension;
+--- a/src/basic/config.cpp
++++ b/src/basic/config.cpp
+@@ -242,7 +242,8 @@
+ 
+ 	auto& makedb_append_opt = parser.add_group("Makedb append options", { makedb });
+ 	makedb_append_opt.add()
+-		("append", 0, "append the input sequences to an existing database (same --taxonmap/--taxonnodes/--taxonnames usage as the original build)", makedb_append);
++		("append", 0, "append the input sequences to an existing database (same --taxonmap/--taxonnodes/--taxonnames usage as the original build)", makedb_append)
++		("no-mask", 0, "store the input sequences as they are, without SEG masking (e.g. when they come from a masked database)", makedb_no_mask);
+ 
+ 	auto& makedb_tax_opt = parser.add_group("Makedb/taxon options", { makedb });
+ 	makedb_tax_opt.add()
+--- a/src/legacy/dmnd/dmnd.cpp
++++ b/src/legacy/dmnd/dmnd.cpp
+@@ -411,7 +411,7 @@
+ 			}
+ 			n = block->seqs().size();
+ 
+-			if (config.dbtype == SequenceType::amino_acid && config.masking_ != "0") {
++			if (config.dbtype == SequenceType::amino_acid && config.masking_ != "0" && !config.makedb_no_mask) {
+ 				timer.go("Masking sequences");
+ 				mask_seqs(block->seqs(), Masking::get(), false, MaskingAlgo::SEG);
+ 			}

@@ -24,10 +24,9 @@ from email.message import EmailMessage
 from email.utils import formatdate
 import blast_db, pymysql
 import dmnd_preselect
-from dmnd_getseq import Dmnd
+from nr_parts import NrParts
 
 E = os.environ.get
-DMND = E("DMND", "/home/gh/diamond/nr_full.dmnd")
 DIAMOND = E("DIAMOND_BIN", os.path.expanduser("~/.local/share/mamba/envs/diamond/bin/diamond"))
 LOCK = E("NR_LOCK", "/home/gh/.nr_dmnd.lock")
 TMP = E("JOB_TMP", "/mnt/archive/blast_api_tmp")
@@ -207,18 +206,34 @@ def run_limited(cmd, timeout):
 PART_ROOT = {"p1_mammalia": 40674}     # database selection (blast_job.db) -> root taxid, as DBS in api.php
 
 
-def part_db(c, name):
-    """(dmnd, letters, n_seq, nr_letters, dmnd_hash) of a built part, or None while it is not built yet. nr_letters (for
-    --dbsize, E-values as in a search of the whole nr) comes from the part's .json, so nr_full is not needed."""
+def part_db(c, name, nr):
+    """(dmnd, letters, n_seq, nr_letters, dmnd_hash) of a built part, or None while it is not built yet. nr_letters
+    (--dbsize, E-values as in a search of the whole nr) is the size of the whole nr (nr_parts.NR_JSON)."""
     c.execute("SELECT dmnd, letters, n_seq, dmnd_hash FROM blast_part WHERE part=%s", (name,))
     row = c.fetchone()
     if not row or not os.path.exists(row[0]):
         return None
-    try:
-        nr_letters = json.load(open(row[0][:-len(".dmnd")] + ".json"))["source_letters"]
-    except (OSError, ValueError, KeyError):
-        return None
-    return row[0], int(row[1]), int(row[2]), int(nr_letters), row[3]
+    return row[0], int(row[1]), int(row[2]), nr.letters, row[3]
+
+
+def merge_hits(rows, max_t, query_ids=()):
+    """Hits of the searches of several parts: a sequence stored in more than one part counts once (best bit score),
+    then per query the best max_t subjects by e-value / bit score, renumbered. Queries keep their input order."""
+    best, order = {}, {q: i for i, q in enumerate(query_ids)}
+    for r in rows:
+        q, s = r[2], r[3]
+        order.setdefault(q, len(order))
+        k = (q, s)
+        if k not in best or float(r[13]) > float(best[k][13]):
+            best[k] = r
+    per_q = {}
+    for (q, _), r in best.items():
+        per_q.setdefault(q, []).append(r)
+    out = []
+    for q in sorted(per_q, key=order.get):
+        hs = sorted(per_q[q], key=lambda r: (float(r[12]), -float(r[13])))[:max_t]
+        out += hs
+    return [(r[0], n, *r[2:]) for n, r in enumerate(out)]
 
 
 def run_job(c, job):
@@ -235,16 +250,19 @@ def run_job(c, job):
                "--outfmt", "6", *FIELDS]
         t0 = time.time()
         pre, fallback, db_letters = None, False, None
+        whole = None        # search of the whole nr: list of (part, dmnd, letters), one diamond run per part
         with open(LOCK, "w") as lock:
             fcntl.flock(lock, fcntl.LOCK_SH)           # waits while an append is running
             c.execute("SELECT release_id, dmnd_hash FROM blast_release WHERE quelle='nr' AND aktiv=1 "
                       "ORDER BY nr_datum DESC LIMIT 1")
             rel, dhash = c.fetchone()
+            nr = NrParts(c)
+            rel, dhash = nr.release_id, nr.hash          # current state of the parts, not the 2026-09 nr release
             part = None
             if dbsel:
                 # built part and no length/date filter: search the part itself; otherwise (part not built yet,
                 # or filters that need a pre-selection) restrict to the part's taxa by pre-selection
-                part = None if (len_min or len_max or new_days) else part_db(c, dbsel)
+                part = None if (len_min or len_max or new_days) else part_db(c, dbsel, nr)
                 if part is None and not taxonlist:
                     taxonlist = str(PART_ROOT[dbsel])
             if part:
@@ -280,7 +298,7 @@ def run_job(c, job):
                     if adhoc:
                         raise Rejected(f"the pre-selection is too large for a search within {budget} s ({e}); "
                                        "narrow organism or length, or request a full search by mail")
-                    cmd += ["--db", DMND] + (["--taxonlist", taxonlist] if taxonlist else [])
+                    whole = nr.dbs()
                     pre, fallback = f"full search, pre-selection {e}", True
                 except pymysql.err.OperationalError as e:
                     if adhoc and e.args and e.args[0] == 1969:      # max_statement_time exceeded
@@ -300,11 +318,17 @@ def run_job(c, job):
                         except pymysql.MySQLError:
                             c.connection.ping(reconnect=True)
             else:
-                cmd += ["--db", DMND]
-            if db_letters is None:
-                db_letters = Dmnd(DMND).letters
-            try:
-                b, est, limit, free, source = ram_plan(c, mode, sens, q_letters, db_letters,
+                whole = nr.dbs()
+            if whole:
+                # one run per part, E-values as in a search of the whole nr; the taxon filter applies in every part
+                db_letters = sum(p[2] for p in whole)
+                runs = [(p[0], ["--db", p[1], "--dbsize", str(nr.letters)]
+                         + (["--taxonlist", taxonlist] if taxonlist else []), p[2]) for p in whole]
+                pre = (pre + "; " if pre else "") + f"whole nr in {len(whole)} parts, {nr.letters} letters"
+            else:
+                runs = [(dbsel or "preselect", [], db_letters)]
+            try:   # memory: the largest single database counts, the parts are searched one after another
+                b, est, limit, free, source = ram_plan(c, mode, sens, q_letters, max(r[2] for r in runs),
                                                        wait_min=0 if adhoc else None)
             except RuntimeError as e:
                 if adhoc:
@@ -326,30 +350,43 @@ def run_job(c, job):
                 timeout = max(5, budget - elapsed)
                 log(f"{job_id}: ad hoc, predicted {pred} s, {elapsed:.0f} s used, timeout {timeout:.0f} s")
             tf = os.path.join(d, "rss.txt")
-            t_diamond = time.time()
-            try:
-                r = run_limited(["/usr/bin/time", "-f", "%M", "-o", tf, *cmd, "--block-size", str(b)], timeout)
-            except subprocess.TimeoutExpired:
-                raise RuntimeError(f"stopped after {timeout:.0f} s" + (f": time budget of {budget} s used up "
-                                                                       "(the prediction was too low)" if adhoc else ""))
+            t_run = time.time()
+            rows, ram = [], None
+            for name, db_args, letters in runs:
+                t_diamond = time.time()
+                left = timeout - (t_diamond - t_run)
+                if left <= 0:
+                    raise RuntimeError(f"stopped after {timeout:.0f} s before part {name}"
+                                       + (f": time budget of {budget} s used up" if adhoc else ""))
+                try:
+                    r = run_limited(["/usr/bin/time", "-f", "%M", "-o", tf, *cmd, *db_args, "--block-size", str(b)],
+                                    left)
+                except subprocess.TimeoutExpired:
+                    raise RuntimeError(f"stopped after {timeout:.0f} s in part {name}"
+                                       + (f": time budget of {budget} s used up (the prediction was too low)"
+                                          if adhoc else ""))
+                try:
+                    rss = round(int(open(tf).read().split()[-1]) / 1048576, 2)
+                except (OSError, ValueError, IndexError):
+                    rss = None
+                if rss is not None:
+                    ram = max(ram or 0, rss)
+                    c.execute("INSERT INTO blast_ram_log (job_id, mode, sensitivity, query_letters, db_letters, "
+                              "block_size, eff_gletters, threads, ram_gb, est_gb, free_gb, seconds, ok) "
+                              "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                              (job_id, mode, sens, q_letters, letters, b, min(letters / 1e9, b), THREADS, rss,
+                               est, free, round(time.time() - t_diamond, 1), int(r.returncode == 0)))
+                if r.returncode != 0:
+                    raise RuntimeError(f"{name}: " + (r.stderr or r.stdout)[-1000:])
+                for line in open(o):
+                    p = line.rstrip("\n").split("\t")
+                    rows.append((job_id, len(rows), *p[:12], p[12] if len(p) > 12 else ""))
+                if whole:
+                    log(f"{job_id}: part {name}: {len(rows)} hits so far, {time.time() - t_diamond:.0f} s")
         secs = round(time.time() - t0, 1)
-        try:
-            ram = round(int(open(tf).read().split()[-1]) / 1048576, 2)
-        except (OSError, ValueError, IndexError):
-            ram = None
-        if ram is not None:
-            c.execute("INSERT INTO blast_ram_log (job_id, mode, sensitivity, query_letters, db_letters, block_size, "
-                      "eff_gletters, threads, ram_gb, est_gb, free_gb, seconds, ok) "
-                      "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                      (job_id, mode, sens, q_letters, db_letters, b, min(db_letters / 1e9, b), THREADS, ram,
-                       est, free, round(time.time() - t_diamond, 1), int(r.returncode == 0)))
-        if r.returncode != 0:
-            raise RuntimeError((r.stderr or r.stdout)[-1000:])
-        rows = []
-        for n, line in enumerate(open(o)):
-            p = line.rstrip("\n").split("\t")
-            rows.append((job_id, n, *p[:12], p[12] if len(p) > 12 else ""))
-    if pre and not fallback:
+    if whole:
+        rows = merge_hits(rows, int(max_t), [l[1:].split()[0] for l in query.splitlines() if l.startswith(">") and l[1:].split()])
+    if (pre and not fallback) or whole:   # parts carry only their own accessions' taxa: take all from blast_acc
         rows = add_staxids(c, rows)
     if fallback:
         rows = post_filter(c, rows, len_min, len_max, new_days)
