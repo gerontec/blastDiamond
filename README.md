@@ -16,7 +16,7 @@ Hits come as a sortable table and as an **Excel file**.
 | results | Excel file kept 14 days |
 | all searches | one queue, strictly one search at a time on one machine; instant searches go before waiting full searches |
 
-Always on the page: [the 30 newest human sequences in nr](https://blast.heissa.de/newest.php), each with
+Always on the page: [the 60 newest human sequences in nr (longer than 10 aa)](https://blast.heissa.de/newest.php), each with
 *search similar*.
 
 Measured on this machine (2026-11-10): 100 aa against Homo sapiens (2.3 M sequences), fast: 4.3 s;
@@ -203,7 +203,7 @@ names `neu_tage` and `von`/`bis` are still accepted as aliases of `new_days` and
 | `GET ?r=confirm&id=…&token=…` | the confirmation link of a full search |
 | `GET ?r=jobxlsx&id=…` | hits of a form search as Excel file |
 | `GET ?r=taxsearch&q=…` | organism names starting with q |
-| `GET ?r=newest` | the 30 Homo sapiens sequences most recently added to nr (cached hourly) |
+| `GET ?r=newest` | the 60 Homo sapiens sequences longer than 10 aa most recently added to nr (cached hourly) |
 | `POST ?r=amylo` | amyloid propensity per window on the Tesla P4 |
 | `GET ?r=amylojob&id=…` | job status and the per-window scores |
 

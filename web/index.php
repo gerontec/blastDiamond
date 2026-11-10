@@ -39,7 +39,7 @@ $T = [
   'remove' => 'entfernen', 'experts' => 'Für Programme: JSON-API', 'source' => 'Quellcode',
   'data' => 'Daten: NCBI nr (täglich ergänzt). Suche: DIAMOND (Buchfink et al., Nat. Methods 2021).',
   'keep' => 'Link zu diesem Ergebnis:', 'need_presel' => 'Für die Sofort-Suche bitte einen Organismus, ein Längenfenster oder „letzte N Tage“ angeben – oder die Vollsuche per Mail nutzen.',
-  'newest' => 'Die 30 neuesten menschlichen Sequenzen in nr',
+  'newest' => 'Die 60 neuesten menschlichen Sequenzen in nr (länger als 10 Aminosäuren)',
   'new_days' => 'Nur Sequenzen, die NCBI in den letzten N Tagen veröffentlicht oder aktualisiert hat', 'new_days_ph' => 'z. B. 7',
  ],
  'en' => [
@@ -68,7 +68,7 @@ $T = [
   'remove' => 'remove', 'experts' => 'For programs: JSON API', 'source' => 'Source code',
   'data' => 'Data: NCBI nr (extended daily). Search: DIAMOND (Buchfink et al., Nat. Methods 2021).',
   'keep' => 'Link to this result:', 'need_presel' => 'For the instant search please give an organism, a length window or "last N days" – or use the full search by mail.',
-  'newest' => 'The 30 newest human sequences in nr',
+  'newest' => 'The 60 newest human sequences in nr (longer than 10 amino acids)',
   'new_days' => 'Only sequences NCBI published or updated in the last N days', 'new_days_ph' => 'e.g. 7',
  ],
 ][$lang];

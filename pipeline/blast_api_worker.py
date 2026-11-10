@@ -389,23 +389,37 @@ def send_mail(to, subject, body):
         s.send_message(msg)
 
 
-NEWEST_TAXID, NEWEST_N = 9606, 30
+NEWEST_TAXID, NEWEST_N = 9606, 60
+NEWEST_MIN_LEN = 10          # only sequences longer than this: 2-5 aa entries (e.g. Ig/TCR "diversity" segments) align with nothing
 _newest_at = 0
 
 
 def write_newest(c):
-    """Cache file for the form: the NEWEST_N sequences of Homo sapiens most recently added to nr (highest OIDs;
-    daily deltas are appended at the end), with title, length and NCBI date. Rewritten every hour."""
+    """Cache file for the form: the NEWEST_N sequences of Homo sapiens longer than NEWEST_MIN_LEN most recently
+    added to nr (highest OIDs; daily deltas are appended at the end), with title, length and NCBI date. Rewritten
+    every hour. Reads blast_acc in batches along its (taxid, oid) index and filters the length per batch; a JOIN
+    with a length condition makes MariaDB scan instead (> 20 s)."""
     import json
-    c.execute("SELECT oid, acc FROM blast_acc WHERE taxid = %s ORDER BY oid DESC LIMIT %s", (NEWEST_TAXID, NEWEST_N))
-    accs = dict(c.fetchall())
-    items = []
-    if accs:
+    items, last_oid, batch = [], None, NEWEST_N * 2
+    for _ in range(50):
+        if last_oid is None:
+            c.execute("SELECT oid, acc FROM blast_acc WHERE taxid = %s ORDER BY oid DESC LIMIT %s", (NEWEST_TAXID, batch))
+        else:
+            c.execute("SELECT oid, acc FROM blast_acc WHERE taxid = %s AND oid < %s ORDER BY oid DESC LIMIT %s",
+                      (NEWEST_TAXID, last_oid, batch))
+        accs = dict(c.fetchall())
+        if not accs:
+            break
+        last_oid = min(accs)
         c.execute("SELECT oid, len, title, quelle, datei, hinzugefuegt, ncbi_datum FROM blast_seq_herkunft "
-                  "WHERE oid IN (" + ",".join(["%s"] * len(accs)) + ") ORDER BY oid DESC", list(accs))
+                  "WHERE oid IN (" + ",".join(["%s"] * len(accs)) + ") AND len > %s ORDER BY oid DESC",
+                  list(accs) + [NEWEST_MIN_LEN])
         for oid, ln, title, src, file, added, ncbi_date in c.fetchall():
             items.append({"acc": accs[oid], "oid": oid, "length": ln, "title": title, "source": src, "file": file,
                           "added": str(added) if added else None, "ncbi_date": str(ncbi_date) if ncbi_date else None})
+        if len(items) >= NEWEST_N:
+            break
+    items = items[:NEWEST_N]
     os.makedirs(RESULT_DIR, exist_ok=True)
     tmp = os.path.join(RESULT_DIR, ".newest_human.json.part")
     json.dump({"taxid": NEWEST_TAXID, "organism": "Homo sapiens", "updated": time.strftime("%Y-%m-%d %H:%M:%S"),

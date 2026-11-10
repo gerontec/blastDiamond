@@ -256,7 +256,7 @@ case 'help':
             'GET ?r=confirm&id=…&token=…' => 'confirmation link of a full search',
             'GET ?r=jobxlsx&id=…' => 'hits of a form job (adhoc/full) as Excel file',
             'GET ?r=taxsearch&q=Homo' => 'organism names starting with q (for the form)',
-            'GET ?r=newest' => 'the 30 Homo sapiens sequences most recently added to nr (cached hourly)',
+            'GET ?r=newest' => 'the 60 Homo sapiens sequences longer than 10 aa most recently added to nr (cached hourly)',
             'POST ?r=amylo (X-Api-Key)' => 'amyloid propensity per window (AmyloDeep on the Tesla P4): '
                 . 'acc=YP_009724390.1 [from=194&to=203] or seq=…, window=4..40 (default 10)',
             'GET ?r=amylojob&id=…' => 'status and window scores of the AmyloDeep job',
@@ -416,7 +416,7 @@ case 'jobxlsx':
     exit;
 
 case 'newest':
-    // the 30 sequences of Homo sapiens most recently added to nr, cached hourly by the worker
+    // the 60 sequences of Homo sapiens longer than 10 aa most recently added to nr, cached hourly by the worker
     $file = rtrim((string)($ini['result_dir'] ?? '/var/lib/blast_results'), '/') . '/newest_human.json';
     if (!is_readable($file)) fail('not cached yet', 503);
     header('Cache-Control: public, max-age=600');

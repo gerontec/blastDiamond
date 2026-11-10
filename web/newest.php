@@ -1,14 +1,14 @@
 <?php
-/* The 30 Homo sapiens sequences most recently added to NCBI nr (cached hourly by the worker, api.php?r=newest). */
+/* The 60 Homo sapiens sequences longer than 10 aa most recently added to NCBI nr (cached hourly by the worker, api.php?r=newest). */
 declare(strict_types=1);
 $lang = (($_GET['lang'] ?? '') === 'en' || (!isset($_GET['lang'])
         && !str_starts_with(strtolower($_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? 'de'), 'de'))) ? 'en' : 'de';
 $T = [
- 'de' => ['title' => 'Die 30 neuesten menschlichen Sequenzen in nr', 'back' => '← zur Suche',
+ 'de' => ['title' => 'Die 60 neuesten menschlichen Sequenzen in nr (länger als 10 Aminosäuren)', 'back' => '← zur Suche',
           'lead' => 'Proteinsequenzen von Homo sapiens, die zuletzt in die Datenbank aufgenommen wurden (tägliche Ergänzung aus GenBank und RefSeq). Die Liste wird stündlich erneuert.',
           'updated' => 'Stand', 'acc' => 'Accession', 'desc' => 'Beschreibung', 'len' => 'Länge (aa)', 'ncbi' => 'NCBI-Datum',
           'added' => 'aufgenommen', 'src' => 'Quelle', 'search' => 'Ähnliche suchen', 'loading' => 'Lade …', 'error' => 'Liste gerade nicht verfügbar.'],
- 'en' => ['title' => 'The 30 newest human sequences in nr', 'back' => '← back to the search',
+ 'en' => ['title' => 'The 60 newest human sequences in nr (longer than 10 amino acids)', 'back' => '← back to the search',
           'lead' => 'Protein sequences of Homo sapiens most recently added to the database (daily additions from GenBank and RefSeq). The list is renewed every hour.',
           'updated' => 'As of', 'acc' => 'Accession', 'desc' => 'Description', 'len' => 'Length (aa)', 'ncbi' => 'NCBI date',
           'added' => 'added', 'src' => 'Source', 'search' => 'Search similar', 'loading' => 'Loading …', 'error' => 'List not available right now.'],
