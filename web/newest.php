@@ -9,7 +9,11 @@ $lang = (($_GET['lang'] ?? '') === 'en' || (!isset($_GET['lang'])
 $T = [
  'de' => ['page' => 'Die 60 neuesten Sequenzen in nr',
           'title' => 'Die 60 neuesten menschlichen Sequenzen in nr (länger als 10 Aminosäuren)', 'back' => '← zur Suche',
-          'lead' => 'Proteinsequenzen von Homo sapiens, die zuletzt in die Datenbank aufgenommen wurden (tägliche Ergänzung aus GenBank und RefSeq). Die Liste wird stündlich erneuert.',
+          'lead' => 'Proteinsequenzen von Homo sapiens, die zuletzt in die Datenbank aufgenommen wurden (tägliche Ergänzung aus GenBank und RefSeq). Die Liste wird stündlich erneuert. '
+                  . 'Die Spalte Art zeigt, ob die Sequenz einem handgeprüften Swiss-Prot-Protein entspricht, dessen Varianten eine '
+                  . 'Krankheit verursachen (krankheitsbezogen, Krankheitsvariante, Proto-Onkogen, Tumorsuppressor, Amyloid) - '
+                  . 'ab 85 Prozent Identität, in Klammern der gemessene Wert. Das Protein selbst ist damit nicht krankhaft: '
+                  . 'das Referenzprotein ist das normale.',
           'updated' => 'Stand', 'acc' => 'Accession', 'desc' => 'Beschreibung', 'len' => 'Länge (aa)', 'ncbi' => 'NCBI-Datum',
           'ptitle' => 'Die 60 neuesten Sequenzen mit Pathogenitäts-Merkmal (ab 85 % Identität)',
           'to_pathogen' => '➜ Die 60 neuesten Sequenzen mit Pathogenitäts-Merkmal',
@@ -28,7 +32,11 @@ $T = [
           'added' => 'aufgenommen', 'src' => 'Quelle', 'search' => 'Ähnliche suchen', 'loading' => 'Lade …', 'error' => 'Liste gerade nicht verfügbar.'],
  'en' => ['page' => 'The 60 newest sequences in nr',
           'title' => 'The 60 newest human sequences in nr (longer than 10 amino acids)', 'back' => '← back to the search',
-          'lead' => 'Protein sequences of Homo sapiens most recently added to the database (daily additions from GenBank and RefSeq). The list is renewed every hour.',
+          'lead' => 'Protein sequences of Homo sapiens most recently added to the database (daily additions from GenBank and RefSeq). The list is renewed every hour. '
+                  . 'The column Kind shows whether the sequence matches a manually curated Swiss-Prot protein whose variants cause '
+                  . 'a disease (disease-associated, disease variant, proto-oncogene, tumor suppressor, amyloid) - from 85 per cent '
+                  . 'identity on, with the measured value in brackets. That does not make the protein itself diseased: the '
+                  . 'reference protein is the normal one.',
           'updated' => 'As of', 'acc' => 'Accession', 'desc' => 'Description', 'len' => 'Length (aa)', 'ncbi' => 'NCBI date',
           'ptitle' => 'The 60 newest sequences carrying a pathogenicity mark (85 % identity or more)',
           'to_pathogen' => '➜ The 60 newest sequences carrying a pathogenicity mark',

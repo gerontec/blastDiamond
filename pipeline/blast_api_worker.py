@@ -465,6 +465,8 @@ def send_mail(to, subject, body):
         s.send_message(msg)
 
 
+PATHOGEN_N = 60
+PATHOGEN_MIN_PIDENT = 85.0   # below that, a conserved enzyme without any role in an infection reaches the reference protein
 NEWEST_TAXID, NEWEST_N = 9606, 60
 NEWEST_MIN_LEN = 10          # only sequences longer than this: 2-5 aa entries (e.g. Ig/TCR "diversity" segments) align with nothing
 _newest_at = 0
@@ -496,16 +498,33 @@ def write_newest(c):
         if len(items) >= NEWEST_N:
             break
     items = items[:NEWEST_N]
+    # the categories of the flag bit mask for these sequences, same source and same threshold as the pathogen
+    # list: a human sequence that is 85 % or more identical to a curated reference protein is that protein, and
+    # 'Disease-associated' then means the variants of it are known to cause disease - not that the sequence is
+    bits, flagged = [], {}                     # diseased, the reference protein is the normal one
+    if items:
+        c.execute("SELECT bit_value, name, class FROM blast_flag_bit ORDER BY bit_value")
+        bits = [(int(b), n, cl) for b, n, cl in c.fetchall()]
+        oids = [i["oid"] for i in items]
+        c.execute("SELECT oid, flags, pident, ref_acc FROM blast_pathogen_hit WHERE pident >= %s AND oid IN (" +
+                  ",".join(["%s"] * len(oids)) + ")", [PATHOGEN_MIN_PIDENT] + oids)
+        flagged = {int(o): (int(fl), float(pid), ref) for o, fl, pid, ref in c.fetchall()}
+    for it in items:
+        fl, pid, ref = flagged.get(it["oid"], (0, None, None))
+        it["flags"] = fl
+        it["kinds"] = [n for b, n, _ in bits if fl & b]
+        it["kind_pident"] = pid
+        it["kind_ref"] = ref
     os.makedirs(RESULT_DIR, exist_ok=True)
     tmp = os.path.join(RESULT_DIR, ".newest_human.json.part")
     json.dump({"taxid": NEWEST_TAXID, "organism": "Homo sapiens", "updated": time.strftime("%Y-%m-%d %H:%M:%S"),
+               "min_pident": PATHOGEN_MIN_PIDENT,
+               "categories": [{"bit": b, "name": n, "class": cl} for b, n, cl in bits],
                "items": items}, open(tmp, "w"), ensure_ascii=False)
     os.chmod(tmp, 0o644)
     os.replace(tmp, os.path.join(RESULT_DIR, "newest_human.json"))
 
 
-PATHOGEN_N = 60
-PATHOGEN_MIN_PIDENT = 85.0   # below that, a conserved enzyme without any role in an infection reaches the reference protein
 
 
 def write_newest_pathogen(c):

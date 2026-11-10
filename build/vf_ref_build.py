@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
-"""Reference set for is_pathog: the manually curated virulence factors and toxins of Swiss-Prot.
+"""Reference proteins for the flags of new nr sequences: two manually curated sets of Swiss-Prot.
 
-Query: reviewed entries with the UniProt keyword Virulence (KW-0843) or Toxin (KW-0800). Reviewed only on
-purpose - the flag of a new nr sequence is only as good as the annotation it is transferred from, and the
-automatic annotations (185 158 entries without 'reviewed') are not a curated statement.
+  vf        virulence factors and toxins - keyword Virulence (KW-0843) or Toxin (KW-0800), any organism
+  disease   HUMAN proteins with a curated "Involvement in disease" annotation (cc_disease), which is what makes
+            a new human sequence interesting: it is a variant of a protein whose variants cause disease
 
-The test this set has to pass: the spike of SARS-CoV-2 (P0DTC2) carries KW-0843, so it is in the set and a new
+Reviewed only on purpose - a flag is only as good as the annotation it is transferred from, and the automatic
+annotations are not a curated statement.
+
+**What the disease set does NOT say**: the protein itself is not pathological. Swiss-Prot records that variants
+of it cause a disease; the reference protein is the normal one. A hit therefore says "same protein as one whose
+variants cause disease", not "this sequence is diseased".
+
+The test the vf set has to pass: the spike of SARS-CoV-2 (P0DTC2) carries KW-0843, so it is in the set and a new
 spike sequence coming in with a daily delivery is flagged by a 100 % hit against it.
 
   vf_ref_build.py --download        fetch FASTA and the table from UniProt into VF_DIR
@@ -22,7 +29,13 @@ import blast_db, pymysql
 
 VF_DIR = os.environ.get("VF_DIR", "/home/gh/diamond/vf")
 DIAMOND = os.environ.get("DIAMOND_BIN", os.path.expanduser("~/build/diamond-master-61bbbe491bed/build/diamond"))
-QUERY = "((keyword:KW-0843) OR (keyword:KW-0800)) AND (reviewed:true)"
+SETS = {
+    "vf": {"query": "((keyword:KW-0843) OR (keyword:KW-0800)) AND (reviewed:true)", "extra": None},
+    # every entry of this set also gets the synthetic keyword below, because its membership is the category:
+    # it comes from the disease comment, not from a keyword
+    "disease": {"query": "(cc_disease:*) AND (reviewed:true) AND (organism_id:9606)",
+                "extra": "Disease-associated"},
+}
 FIELDS = "accession,id,protein_name,organism_name,organism_id,keyword,length"
 BASE = "https://rest.uniprot.org/uniprotkb/stream"
 T0 = time.time()
@@ -32,9 +45,9 @@ def log(msg):
     print(f"[{time.time() - T0:7.1f}s] {msg}", flush=True)
 
 
-def fetch(fmt, out):
+def fetch(query, fmt, out):
     import urllib.parse, urllib.request
-    q = {"query": QUERY, "format": fmt}
+    q = {"query": query, "format": fmt}
     if fmt == "tsv":
         q["fields"] = FIELDS
     url = BASE + "?" + urllib.parse.urlencode(q)
@@ -55,16 +68,38 @@ def fetch(fmt, out):
 
 
 def download():
+    """Both sets, then one FASTA for makedb with every accession exactly once (an entry can be in both sets)."""
     os.makedirs(VF_DIR, exist_ok=True)
-    rel = fetch("fasta", f"{VF_DIR}/vf_ref.fasta")
-    fetch("tsv", f"{VF_DIR}/vf_ref.tsv")
-    n = sum(1 for l in open(f"{VF_DIR}/vf_ref.fasta") if l.startswith(">"))
-    log(f"{n} reference proteins in the FASTA")
+    rel = None
+    for name, cfg in SETS.items():
+        rel = fetch(cfg["query"], "fasta", f"{VF_DIR}/vf_ref_{name}.fasta") or rel
+        fetch(cfg["query"], "tsv", f"{VF_DIR}/vf_ref_{name}.tsv")
+    seen, kept, dup = set(), 0, 0
+    with open(f"{VF_DIR}/vf_ref.fasta", "w") as out:
+        for name in SETS:
+            keep = False
+            for line in open(f"{VF_DIR}/vf_ref_{name}.fasta"):
+                if line.startswith(">"):
+                    acc = line[1:].split("|")[1] if "|" in line else line[1:].split()[0]
+                    keep = acc not in seen
+                    if keep:
+                        seen.add(acc)
+                        kept += 1
+                    else:
+                        dup += 1
+                if keep:
+                    out.write(line)
+    with open(f"{VF_DIR}/vf_ref.fasta.release", "w") as f:
+        f.write((rel or "?") + "\n")
+    log(f"{kept} reference proteins in the merged FASTA, {dup} entries skipped as already present")
     return rel
 
 
 CATEGORY_SEED = {"Virulence", "Cytolysis", "Hemolysis", "Antibiotic resistance", "Superantigen", "Vasoactive",
-                 "Antimicrobial", "Allergen", "Antibiotic", "Fungicide", "Bacteriocin", "Amyloid"}
+                 "Antimicrobial", "Allergen", "Antibiotic", "Fungicide", "Bacteriocin", "Amyloid",
+                 # the disease set: its membership plus the three keywords that say something about the role
+                 "Disease-associated", "Disease variant", "Proto-oncogene", "Tumor suppressor"}
+DISEASE_CLASS = {"Disease-associated", "Disease variant", "Proto-oncogene", "Tumor suppressor", "Amyloid"}
 MIN_REF = 1          # a category with a single reference protein still gets a bit; the count is stored with it
 
 
@@ -76,6 +111,8 @@ def is_category(kw):
 
 def classify(kw):
     k = kw.lower()
+    if kw in DISEASE_CLASS:
+        return "disease"
     if "resistance" in k:
         return "resistance"
     if "toxin" in k or kw in {"Cytolysis", "Hemolysis", "Vasoactive"}:
@@ -115,23 +152,35 @@ def ensure_bits(c, counts):
 
 def load():
     rel = open(f"{VF_DIR}/vf_ref.fasta.release").read().strip()
-    source = f"Swiss-Prot KW-0843/KW-0800 {rel}"
+    source = f"Swiss-Prot vf+disease {rel}"
     con = pymysql.connect(**blast_db.cfg(), autocommit=False)
     c = con.cursor()
     import collections
-    entries, counts = [], collections.Counter()
-    head = None
-    for line in open(f"{VF_DIR}/vf_ref.tsv", encoding="utf-8"):
-        f = line.rstrip("\n").split("\t")
-        if head is None:
-            head = f
-            continue
-        d = dict(zip(head, f))
-        kws = [k.strip() for k in d.get("Keywords", "").split(";") if k.strip()]
+    merged, counts = {}, collections.Counter()
+    for name, cfg in SETS.items():
+        head, n = None, 0
+        for line in open(f"{VF_DIR}/vf_ref_{name}.tsv", encoding="utf-8"):
+            f = line.rstrip("\n").split("\t")
+            if head is None:
+                head = f
+                continue
+            d = dict(zip(head, f))
+            kws = [k.strip() for k in d.get("Keywords", "").split(";") if k.strip()]
+            if cfg["extra"]:
+                kws.append(cfg["extra"])          # membership of this set is itself a category
+            acc = d["Entry"]
+            if acc in merged:                      # in both sets: keep one row, union of the keywords
+                d0, kws0 = merged[acc]
+                merged[acc] = (d0, sorted(set(kws0) | set(kws)))
+            else:
+                merged[acc] = (d, kws)
+            n += 1
+        log(f"set {name}: {n} entries")
+    entries = list(merged.values())
+    for _, kws in entries:
         for k in kws:
             counts[k] += 1
-        entries.append((d, kws))
-    log(f"{len(entries)} entries, {len(counts)} distinct keywords")
+    log(f"{len(entries)} entries after merging both sets, {len(counts)} distinct keywords")
 
     bits = ensure_bits(c, counts)
     con.commit()
@@ -157,6 +206,9 @@ def load():
                  ORDER BY b.bit_value LIMIT 8""")
     for b, name, cl, cnt in c.fetchall():
         log(f"  bit {b:>6} {name} ({cl}): {cnt} reference proteins")
+    c.execute("SELECT COUNT(DISTINCT r.acc) FROM blast_vf_ref r JOIN blast_flag_bit b "
+              "ON r.flags & b.bit_value WHERE b.class = 'disease'")
+    log(f"disease-associated reference proteins: {c.fetchone()[0]}")
     c.execute("SELECT acc, flags, protein_name FROM blast_vf_ref WHERE acc = 'P0DTC2'")
     spike = c.fetchone()
     if spike:

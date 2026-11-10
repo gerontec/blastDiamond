@@ -9,25 +9,6 @@
     location.replace("newest.php?lang=" + encodeURIComponent(root.dataset.lang || "de") + "&list=pathogen");
     return;
   }
-  const list = document.getElementById("list");
-  if (list) fetch("api.php?r=newest").then(r => r.ok ? r.json() : Promise.reject(r.status)).then(d => {
-    let html = '<p class="small text-body-secondary">' + esc(t("updated")) + ": " + esc(d.updated) + "</p>" +
-      '<div class="table-responsive border rounded"><table class="table table-sm table-hover table-striped align-middle mb-0"><thead class="table-light"><tr>' +
-      "<th>" + esc(t("acc")) + "</th><th>" + esc(t("desc")) + "</th><th>" + esc(t("len")) + "</th><th>" + esc(t("ncbi")) + "</th><th>" +
-      esc(t("added")) + "</th><th>" + esc(t("src")) + "</th><th></th></tr></thead><tbody>";
-    (d.items || []).forEach(x => {
-      const title = (x.title || "").replace(/^\S+\s/, "");
-      html += '<tr><td class="text-nowrap"><a href="https://www.ncbi.nlm.nih.gov/protein/' + encodeURIComponent(x.acc) + '" target="_blank" rel="noopener">' +
-        esc(x.acc) + "</a></td><td class=\"small\">" + esc(title) + "</td><td>" + esc(x.length) + '</td><td class="text-nowrap small">' + esc(x.ncbi_date) +
-        '</td><td class="text-nowrap small">' + esc((x.added || "").slice(0, 10)) + '</td><td class="small">' + esc(x.source) +
-        '</td><td><a class="btn btn-outline-primary btn-sm text-nowrap" href="./?lang=' + esc(root.dataset.lang) + "&acc=" + encodeURIComponent(x.acc) + '">' +
-        esc(t("search")) + "</a></td></tr>";
-    });
-    list.innerHTML = html + "</tbody></table></div>";
-  }).catch(() => { list.innerHTML = '<div class="alert alert-warning">' + esc(t("error")) + "</div>"; });
-
-  // second table: the proteins most recently flagged as a virulence factor or toxin (api.php?r=newest_pathogen)
-  const box = document.getElementById("pathogen");
   // German names for the categories that have one; the rest keeps the English name of blast_flag_bit
   const LABEL = root.dataset.lang === "de" ? {
     "Toxin": "Toxin", "Virulence": "Virulenzfaktor", "Neurotoxin": "Neurotoxin",
@@ -37,8 +18,32 @@
     "Antibiotic resistance": "Antibiotikaresistenz", "Superantigen": "Superantigen",
     "Postsynaptic neurotoxin": "postsynaptisches Neurotoxin",
     "Presynaptic neurotoxin": "präsynaptisches Neurotoxin", "Vasoactive": "vasoaktiv",
-    "Antimicrobial": "antimikrobiell", "Allergen": "Allergen"
+    "Antimicrobial": "antimikrobiell", "Allergen": "Allergen",
+    "Disease-associated": "krankheitsbezogen", "Disease variant": "Krankheitsvariante",
+    "Proto-oncogene": "Proto-Onkogen", "Tumor suppressor": "Tumorsuppressor", "Amyloid": "Amyloid"
   } : {};
+  const kinds = x => (x.kinds || []).map(k => LABEL[k] || k).join(", ");
+  const list = document.getElementById("list");
+  if (list) fetch("api.php?r=newest").then(r => r.ok ? r.json() : Promise.reject(r.status)).then(d => {
+    let html = '<p class="small text-body-secondary">' + esc(t("updated")) + ": " + esc(d.updated) + "</p>" +
+      '<div class="table-responsive border rounded"><table class="table table-sm table-hover table-striped align-middle mb-0"><thead class="table-light"><tr>' +
+      "<th>" + esc(t("acc")) + "</th><th>" + esc(t("desc")) + "</th><th>" + esc(t("len")) + "</th><th>" + esc(t("kind")) + "</th><th>" + esc(t("ncbi")) + "</th><th>" +
+      esc(t("added")) + "</th><th>" + esc(t("src")) + "</th><th></th></tr></thead><tbody>";
+    (d.items || []).forEach(x => {
+      const title = (x.title || "").replace(/^\S+\s/, "");
+      html += '<tr><td class="text-nowrap"><a href="https://www.ncbi.nlm.nih.gov/protein/' + encodeURIComponent(x.acc) + '" target="_blank" rel="noopener">' +
+        esc(x.acc) + "</a></td><td class=\"small\">" + esc(title) + "</td><td>" + esc(x.length) + "</td>" +
+        '<td class="small">' + (x.kinds && x.kinds.length ? esc(kinds(x)) + ' <span class="text-body-secondary">(' + esc(Number(x.kind_pident).toFixed(1)) + ' %)</span>' : "") + "</td>" +
+        '<td class="text-nowrap small">' + esc(x.ncbi_date) +
+        '</td><td class="text-nowrap small">' + esc((x.added || "").slice(0, 10)) + '</td><td class="small">' + esc(x.source) +
+        '</td><td><a class="btn btn-outline-primary btn-sm text-nowrap" href="./?lang=' + esc(root.dataset.lang) + "&acc=" + encodeURIComponent(x.acc) + '">' +
+        esc(t("search")) + "</a></td></tr>";
+    });
+    list.innerHTML = html + "</tbody></table></div>";
+  }).catch(() => { list.innerHTML = '<div class="alert alert-warning">' + esc(t("error")) + "</div>"; });
+
+  // second table: the proteins most recently flagged as a virulence factor or toxin (api.php?r=newest_pathogen)
+  const box = document.getElementById("pathogen");
   if (box) fetch("api.php?r=newest_pathogen").then(r => r.ok ? r.json() : Promise.reject(r.status)).then(d => {
     const items = d.items || [];
     if (!items.length) { box.innerHTML = '<div class="text-body-secondary">' + esc(t("pempty")) + "</div>"; return; }
@@ -51,7 +56,7 @@
       esc(t("ncbi")) + "</th><th></th></tr></thead><tbody>";
     items.forEach(x => {
       const title = (x.title || "").replace(/^\S+\s/, "");
-      const kind = (x.kinds || []).map(k => LABEL[k] || k).join(", ");
+      const kind = kinds(x);
       const strong = x.pident >= 90 ? ' class="fw-semibold"' : "";
       html += '<tr><td class="text-nowrap"><a href="https://www.ncbi.nlm.nih.gov/protein/' + encodeURIComponent(x.acc) +
         '" target="_blank" rel="noopener">' + esc(x.acc) + "</a></td>" +
