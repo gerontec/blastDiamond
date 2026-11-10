@@ -228,6 +228,11 @@ function queue_position(PDO $db, string $tier, string $created): int
 }
 
 $base = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'yt.heissa.de') . strtok($_SERVER['REQUEST_URI'] ?? '/blast/api.php', '?');
+// behind the query form's proxy the public address is <X-Forwarded-Host>/api.php
+$fwdHost = $_SERVER['HTTP_X_FORWARDED_HOST'] ?? '';
+if (in_array($_SERVER['REMOTE_ADDR'] ?? '', $trusted, true) && preg_match('/^[A-Za-z0-9.-]{1,253}$/', $fwdHost)) {
+    $base = "https://$fwdHost/api.php";
+}
 
 switch (param('r', 'help')) {
 

@@ -113,6 +113,16 @@ def search_rate(c, mode, sens):
     return float(r) if r is not None else None
 
 
+def build_rate(c):
+    """Seconds per sequence to build a sub-.dmnd that is not cached yet (MariaDB selection + reading the records
+    from nr_full.dmnd + makedb), the largest value of the calibration builds with at least 100 000 sequences.
+    Default 60 us per sequence (2026-11-10: Mammalia, 15.5 M sequences in 776 s = 50 us)."""
+    c.execute("SELECT MAX(seconds / n_seq) FROM blast_calib WHERE kind = 'preselect' AND ok = 1 AND note IS NULL "
+              "AND n_seq >= 100000")
+    r = c.fetchone()[0]
+    return float(r) if r is not None else 60e-6
+
+
 def predict_seconds(c, mode, sens, q_letters, db_letters):
     """Predicted diamond wall time (with ADHOC_SAFETY margin), None without measurements."""
     rate = search_rate(c, mode, sens)
@@ -214,8 +224,12 @@ def run_job(c, job):
                     if rate is None:
                         raise Rejected(f"no timing measurements for {mode} {sens} yet, so the search time "
                                        "cannot be predicted")
+                    # two caps: what the search could cover in the budget, and what can be built in 60 % of it
+                    # (building cannot be interrupted; a cached pre-selection skips the build and both caps)
                     max_letters = (budget - 1) / ADHOC_SAFETY / max(rate, 1e-9) / q_letters * 1e9
-                    ps_kw["max_seq"] = max(1000, min(dmnd_preselect.MAX_SEQ, int(max_letters / ADHOC_AVG_LEN)))
+                    max_build = budget * 0.6 / ADHOC_SAFETY / build_rate(c)
+                    ps_kw["max_seq"] = max(1000, min(dmnd_preselect.MAX_SEQ, int(max_letters / ADHOC_AVG_LEN),
+                                                     int(max_build)))
                     c.execute("SET SESSION max_statement_time = %s", (ADHOC_SQL_S,))
                 try:
                     m = dmnd_preselect.preselect(c, taxa, len_min, len_max, new_days, threads=THREADS, **ps_kw)

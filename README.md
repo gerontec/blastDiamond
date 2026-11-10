@@ -1,5 +1,37 @@
 # blastDiamond
 
+## ➜ Query form: <https://blast.heissa.de/>
+
+Paste a protein (or DNA for blastx) sequence or an nr accession, restrict by organism, length or
+"published by NCBI in the last N days", press *Search now*. No account, no key. German and English.
+Hits come as a sortable table and as an **Excel file**.
+
+**This is a privately funded project. Searches that would take longer than 5 minutes are not run.**
+
+| | limit |
+|---|---|
+| instant search | needs a restriction (organism and/or length and/or last N days); runs only if the predicted time fits **300 s**, otherwise it is refused with the reason before it starts |
+| per address | one instant search at a time, 100 per day; 10 sequences / 20 000 letters per search |
+| full search of the whole nr | by e-mail, **one per address and day**; starts after the link in the confirmation mail is opened (valid 24 h); 30 min to several hours |
+| results | Excel file kept 14 days |
+| all searches | one queue, strictly one search at a time on one machine; instant searches go before waiting full searches |
+
+Always on the page: [the 30 newest human sequences in nr](https://blast.heissa.de/newest.php), each with
+*search similar*.
+
+Measured on this machine (2026-11-10): 100 aa against Homo sapiens (2.3 M sequences), fast: 4.3 s;
+400 aa against Mammalia (15.5 M sequences, 9.2 G letters), fast: 15 s once its pre-selection is cached.
+Building a pre-selection that is not cached costs about 50 µs per sequence, so large groups such as
+Mammalia (13 min to build) or Bacteria (the selection alone exceeds 60 s) are refused as instant searches.
+
+How the 300 s are guaranteed: the pre-selection runs under a MariaDB statement time limit and a sequence
+cap derived from the measured build and search rates (`blast_calib`, `pipeline/diamond_calibrate.py`); then
+the search time is predicted from the size of the pre-selection with a margin of 1.5, and the search is
+refused instead of started if it would not fit; a hard timeout kills the whole diamond process group as the
+last resort.
+
+---
+
 NCBI nr as a DIAMOND database, its metadata in MariaDB, a JSON API on top of both, and a GPU worker
 that scores protein windows for amyloid propensity on an NVIDIA Tesla P4. Everything here runs on a
 single machine (Ubuntu 26.04, 62 GB RAM, 20 threads, Tesla P4).
@@ -146,6 +178,7 @@ query, `--very-sensitive` (16 seed shapes, 13 s) returned byte-identical hits to
 | `db/grants_api.sql` | the grants of the API user, no password |
 | `build/` | the one-pass nr build, the metadata loader, the status probe |
 | `api/api.php` | the JSON API |
+| `web/` | the query form (PHP + Bootstrap 5.3.3 shipped locally, no CDN), German/English |
 | `pipeline/` | nr updates (cron), search worker, pre-selection, direct `.dmnd` access |
 | `amyloid/` | the AmyloDeep GPU worker, its job queue and the test scripts |
 | `env/` | the CUDA 11.8 conda environment of the GPU worker |
@@ -165,6 +198,12 @@ names `neu_tage` and `von`/`bis` are still accepted as aliases of `new_days` and
 | `GET ?r=taxon&taxid=…` | taxon with its lineage |
 | `POST ?r=search` | DIAMOND search — `seq=…`, or `acc=…` plus optional `range=319-541`; filters `taxonlist`, `len_min`/`len_max`, `new_days` |
 | `GET ?r=job&id=…` | search status and hits, titles and taxa joined from MariaDB |
+| `POST ?r=adhoc` | no key: like `search`, with a restriction, only if it fits 300 s (else status `rejected` with the reason) |
+| `POST ?r=full` | no key: search of the whole nr, `email=…`, one per address and day, after confirmation |
+| `GET ?r=confirm&id=…&token=…` | the confirmation link of a full search |
+| `GET ?r=jobxlsx&id=…` | hits of a form search as Excel file |
+| `GET ?r=taxsearch&q=…` | organism names starting with q |
+| `GET ?r=newest` | the 30 Homo sapiens sequences most recently added to nr (cached hourly) |
 | `POST ?r=amylo` | amyloid propensity per window on the Tesla P4 |
 | `GET ?r=amylojob&id=…` | job status and the per-window scores |
 
@@ -192,4 +231,4 @@ and typesets with pdfLaTeX. The numbers in those PDFs are read at generation tim
 ## Licence
 
 The DIAMOND patches in `diamond/` are derived work of DIAMOND and carry its GPL-3.0 licence.
-The scripts here are published under the same licence.
+The scripts here are published under the same licence. Bootstrap in `web/assets/` is MIT licensed.
