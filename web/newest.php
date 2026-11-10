@@ -1,14 +1,19 @@
 <?php
-/* The 60 Homo sapiens sequences longer than 10 aa most recently added to NCBI nr (cached hourly by the worker, api.php?r=newest). */
+/* The 60 sequences most recently added to NCBI nr, one list per view (both cached hourly by the worker):
+   ?list=human     Homo sapiens, longer than 10 aa (api.php?r=newest)
+   ?list=pathogen  carrying a pathogenicity mark at 85 % identity or more (api.php?r=newest_pathogen) */
 declare(strict_types=1);
+$list = (($_GET['list'] ?? '') === 'pathogen') ? 'pathogen' : 'human';
 $lang = (($_GET['lang'] ?? '') === 'en' || (!isset($_GET['lang'])
         && !str_starts_with(strtolower($_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? 'de'), 'de'))) ? 'en' : 'de';
 $T = [
  'de' => ['page' => 'Die 60 neuesten Sequenzen in nr',
-          'title' => 'Menschliche Sequenzen (länger als 10 Aminosäuren)', 'back' => '← zur Suche',
+          'title' => 'Die 60 neuesten menschlichen Sequenzen in nr (länger als 10 Aminosäuren)', 'back' => '← zur Suche',
           'lead' => 'Proteinsequenzen von Homo sapiens, die zuletzt in die Datenbank aufgenommen wurden (tägliche Ergänzung aus GenBank und RefSeq). Die Liste wird stündlich erneuert.',
           'updated' => 'Stand', 'acc' => 'Accession', 'desc' => 'Beschreibung', 'len' => 'Länge (aa)', 'ncbi' => 'NCBI-Datum',
-          'ptitle' => 'Sequenzen mit Pathogenitäts-Merkmal (ab 85 % Identität)',
+          'ptitle' => 'Die 60 neuesten Sequenzen mit Pathogenitäts-Merkmal (ab 85 % Identität)',
+          'to_pathogen' => '➜ Die 60 neuesten Sequenzen mit Pathogenitäts-Merkmal',
+          'to_human' => '➜ Die 60 neuesten menschlichen Sequenzen',
           'plead' => 'Neu aufgenommene Proteine, die einem handgeprüften Virulenzfaktor oder Toxin aus Swiss-Prot '
                    . 'ähnlich sind (Stichwort Virulence KW-0843 oder Toxin KW-0800). Das Merkmal gilt für das '
                    . 'einzelne Protein, nicht für den Organismus: das Spike von SARS-CoV-2 steht hier, sein '
@@ -20,10 +25,12 @@ $T = [
           'pempty' => 'Noch keine markierten Sequenzen.',
           'added' => 'aufgenommen', 'src' => 'Quelle', 'search' => 'Ähnliche suchen', 'loading' => 'Lade …', 'error' => 'Liste gerade nicht verfügbar.'],
  'en' => ['page' => 'The 60 newest sequences in nr',
-          'title' => 'Human sequences (longer than 10 amino acids)', 'back' => '← back to the search',
+          'title' => 'The 60 newest human sequences in nr (longer than 10 amino acids)', 'back' => '← back to the search',
           'lead' => 'Protein sequences of Homo sapiens most recently added to the database (daily additions from GenBank and RefSeq). The list is renewed every hour.',
           'updated' => 'As of', 'acc' => 'Accession', 'desc' => 'Description', 'len' => 'Length (aa)', 'ncbi' => 'NCBI date',
-          'ptitle' => 'Sequences carrying a pathogenicity mark (85 % identity or more)',
+          'ptitle' => 'The 60 newest sequences carrying a pathogenicity mark (85 % identity or more)',
+          'to_pathogen' => '➜ The 60 newest sequences carrying a pathogenicity mark',
+          'to_human' => '➜ The 60 newest human sequences',
           'plead' => 'Newly added proteins that are similar to a manually curated virulence factor or toxin in '
                    . 'Swiss-Prot (keyword Virulence KW-0843 or Toxin KW-0800). The mark belongs to the single '
                    . 'protein, not to the organism: the spike of SARS-CoV-2 is here, its nucleocapsid is not. '
@@ -44,7 +51,7 @@ header("Content-Security-Policy: default-src 'self'; style-src 'self'; script-sr
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title><?= h($T['page']) ?></title>
+<title><?= h($list === 'pathogen' ? $T['ptitle'] : $T['title']) ?></title>
 <link rel="stylesheet" href="assets/bootstrap.min.css">
 <link rel="stylesheet" href="assets/app.css">
 </head>
@@ -52,21 +59,23 @@ header("Content-Security-Policy: default-src 'self'; style-src 'self'; script-sr
 <nav class="navbar bg-body-tertiary border-bottom mb-4">
   <div class="container">
     <a class="navbar-brand fw-semibold" href="./?lang=<?= $lang ?>">DIAMOND · NCBI nr</a>
-    <div class="small"><a href="?lang=de" class="<?= $lang === 'de' ? 'fw-bold' : '' ?>">DE</a> · <a href="?lang=en" class="<?= $lang === 'en' ? 'fw-bold' : '' ?>">EN</a></div>
+    <div class="small"><a href="?lang=de&amp;list=<?= $list ?>" class="<?= $lang === 'de' ? 'fw-bold' : '' ?>">DE</a> · <a href="?lang=en&amp;list=<?= $list ?>" class="<?= $lang === 'en' ? 'fw-bold' : '' ?>">EN</a></div>
   </div>
 </nav>
-<main class="container mb-5" id="newest" data-lang="<?= $lang ?>"
+<main class="container mb-5" id="newest" data-lang="<?= $lang ?>" data-list="<?= $list ?>"
   <?php foreach ($T as $k => $v): ?> data-t-<?= h($k) ?>="<?= h($v) ?>"<?php endforeach; ?>>
   <p><a href="./?lang=<?= $lang ?>"><?= h($T['back']) ?></a></p>
-  <h1 class="h3"><?= h($T['page']) ?></h1>
-
-  <h2 class="h4 mt-4" id="human"><?= h($T['title']) ?></h2>
+<?php if ($list === 'pathogen'): ?>
+  <h1 class="h3"><?= h($T['ptitle']) ?></h1>
+  <p class="text-body-secondary"><?= h($T['plead']) ?></p>
+  <div id="pathogen"><div class="text-body-secondary"><?= h($T['loading']) ?></div></div>
+  <p class="mt-4 small"><a href="?lang=<?= $lang ?>"><?= h($T['to_human']) ?></a></p>
+<?php else: ?>
+  <h1 class="h3"><?= h($T['title']) ?></h1>
   <p class="text-body-secondary"><?= h($T['lead']) ?></p>
   <div id="list"><div class="text-body-secondary"><?= h($T['loading']) ?></div></div>
-
-  <h2 class="h4 mt-5" id="pathogen-head"><?= h($T['ptitle']) ?></h2>
-  <p class="text-body-secondary small"><?= h($T['plead']) ?></p>
-  <div id="pathogen" style="scroll-margin-top:1rem"><div class="text-body-secondary"><?= h($T['loading']) ?></div></div>
+  <p class="mt-4 small"><a href="?lang=<?= $lang ?>&amp;list=pathogen"><?= h($T['to_pathogen']) ?></a></p>
+<?php endif; ?>
 </main>
 <script src="assets/newest.js"></script>
 </body>

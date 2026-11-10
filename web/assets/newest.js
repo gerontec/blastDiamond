@@ -4,8 +4,13 @@
   const root = document.getElementById("newest");
   const t = k => root.dataset["t" + k[0].toUpperCase() + k.slice(1)] || k;
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  // an older link pointed at newest.php#pathogen, where both lists were on one page
+  if (location.hash === "#pathogen" && !/[?&]list=/.test(location.search)) {
+    location.replace("newest.php?lang=" + encodeURIComponent(root.dataset.lang || "de") + "&list=pathogen");
+    return;
+  }
   const list = document.getElementById("list");
-  fetch("api.php?r=newest").then(r => r.ok ? r.json() : Promise.reject(r.status)).then(d => {
+  if (list) fetch("api.php?r=newest").then(r => r.ok ? r.json() : Promise.reject(r.status)).then(d => {
     let html = '<p class="small text-body-secondary">' + esc(t("updated")) + ": " + esc(d.updated) + "</p>" +
       '<div class="table-responsive border rounded"><table class="table table-sm table-hover table-striped align-middle mb-0"><thead class="table-light"><tr>' +
       "<th>" + esc(t("acc")) + "</th><th>" + esc(t("desc")) + "</th><th>" + esc(t("len")) + "</th><th>" + esc(t("ncbi")) + "</th><th>" +
@@ -34,7 +39,7 @@
     "Presynaptic neurotoxin": "präsynaptisches Neurotoxin", "Vasoactive": "vasoaktiv",
     "Antimicrobial": "antimikrobiell", "Allergen": "Allergen"
   } : {};
-  fetch("api.php?r=newest_pathogen").then(r => r.ok ? r.json() : Promise.reject(r.status)).then(d => {
+  if (box) fetch("api.php?r=newest_pathogen").then(r => r.ok ? r.json() : Promise.reject(r.status)).then(d => {
     const items = d.items || [];
     if (!items.length) { box.innerHTML = '<div class="text-body-secondary">' + esc(t("pempty")) + "</div>"; return; }
     let foot = esc(t("updated")) + ": " + esc(d.updated) + " · " + esc(d.reference_proteins) + " " + esc(t("refs"));

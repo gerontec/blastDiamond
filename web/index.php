@@ -113,8 +113,8 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data:; style
 <main class="container mb-5" id="app" data-chembl="<?= h($CHEMBL_URL) ?>"
   <?php foreach ($T as $k => $v): ?> data-t-<?= h(str_replace('_', '-', $k)) ?>="<?= h($v) ?>"<?php endforeach; ?>>
   <p class="lead"><?= h($T['lead']) ?></p>
-  <p><a class="fw-semibold" href="newest.php?lang=<?= $lang ?>#human">➜ <?= h($T['newest']) ?></a></p>
-  <p><a class="fw-semibold" href="newest.php?lang=<?= $lang ?>#pathogen">➜ <?= h($T['newest_pathogen']) ?></a></p>
+  <p><a class="fw-semibold" href="newest.php?lang=<?= $lang ?>">➜ <?= h($T['newest']) ?></a></p>
+  <p><a class="fw-semibold" href="newest.php?lang=<?= $lang ?>&amp;list=pathogen">➜ <?= h($T['newest_pathogen']) ?></a></p>
 
   <div class="alert alert-warning">
     <strong><?= h($T['notice_h']) ?>.</strong> <?= h($T['notice']) ?>
