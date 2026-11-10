@@ -1,7 +1,7 @@
 # Six partial DIAMOND databases instead of nr_full, daily update
 
 Status: built 2026-11-10. `nr_full.dmnd` (497 GB, 1 172 011 885 sequences) is replaced by six partial
-databases derived from it and is deleted after the switch.
+databases derived from it; nr_full was deleted on 2026-11-10 after all six parts were built (every OID is in a part).
 
 ## Parts
 
@@ -12,10 +12,10 @@ human -> mammalia, not metazoa) and is stored in `blast_part_group (grp, root_ta
 |---|---|---|---|
 | `p1_mammalia` | mammalia | 15.5 M | 10 GB |
 | `p2_eukaryota_other` | metazoa, fungi, plants, eukaryota (other) | 157 M | 86 GB |
-| `p3_viruses_archaea_other` | viruses, archaea, none (taxid unknown/0), other (under no root) | 44 M | ~38 GB |
-| `p4_pseudomonadota` | gamma-, alpha-, betaproteobacteria, pseudomonadota (other) | 354 M | 133 GB |
-| `p5_bacillati` | actinomycetota, bacillota, chloroflexota, cyanobacteriota, mycoplasmatota | 344 M | ~123 GB |
-| `p6_bacteria_other` | bacteria (other), bacteroidota, planctomycetota, campylobacterota, verrucomicrobiota, spirochaetota | 263 M | ~95 GB |
+| `p3_viruses_archaea_other` | viruses, archaea, none (taxid unknown/0), other (under no root) | 44.1 M | 37 GB |
+| `p4_pseudomonadota` | gamma-, alpha-, betaproteobacteria, pseudomonadota (other) | 352 M | 135 GB |
+| `p5_bacillati` | actinomycetota, bacillota, chloroflexota, cyanobacteriota, mycoplasmatota | 344 M | 131 GB |
+| `p6_bacteria_other` | bacteria (other), bacteroidota, planctomycetota, campylobacterota, verrucomicrobiota, spirochaetota | 263 M | 99 GB |
 
 Membership: a sequence (OID, possibly many accessions) belongs to every part one of its accessions' taxa
 falls into. 6 351 633 OIDs are in more than one part (+0.4 % letters); every OID is in at least one.

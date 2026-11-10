@@ -135,8 +135,9 @@ def main():
                   "dmnd_sequenzen, dmnd_letters, meta_importiert, aktiv) "
                   "VALUES ('nr-parts', 'nr_part_build', NOW(), 0, 0, 'nr parts', %s, %s, %s, NOW(), 0)",
                   (h, a.n_seq, a.letters))
-        part_release_rows(c, c.lastrowid)
-        print(f"registered release {c.lastrowid}: {a.n_seq} sequences, {a.letters} letters, hash {h}")
+        rel = c.lastrowid
+        part_release_rows(c, rel)
+        print(f"registered release {rel}: {a.n_seq} sequences, {a.letters} letters, hash {h}")
     nr = NrParts(c)
     print(f"whole nr: {nr.n_seq} sequences, {nr.letters} letters, release {nr.release_id}, hash {nr.hash}")
     for p, d, l, n in nr.parts:
