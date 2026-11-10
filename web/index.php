@@ -22,7 +22,10 @@ $T = [
   'acc_ph' => 'z. B. YP_009724390.1', 'range' => 'Bereich (optional)', 'range_ph' => 'z. B. 319-541',
   'program' => 'Programm', 'blastp' => 'blastp – Protein gegen Protein', 'blastx' => 'blastx – DNA/RNA, übersetzt gegen Protein',
   'sens' => 'Sensitivität', 'sens_help' => 'Höher = findet entferntere Verwandte, rechnet aber deutlich länger.',
-  'presel' => 'Eingrenzung (für die Sofort-Suche nötig)', 'org' => 'Organismus oder Gruppe', 'org_ph' => 'Name eintippen, z. B. Homo sapiens, Fungi, Coronaviridae',
+  'dbsel' => 'Datenbank', 'db_mammalia' => 'Säugetiere (Mammalia, über 15 Mio. Sequenzen)',
+  'db_nr' => 'Gesamte nr (über 1,1 Mrd. Sequenzen – Sofort-Suche nur mit Eingrenzung)',
+  'db_help' => 'Säugetiere ist für die meisten Fragen aus der Humanmedizin die schnellste Wahl. Der Organismus-Filter unten grenzt innerhalb der gewählten Datenbank weiter ein.',
+  'presel' => 'Weitere Eingrenzung (bei „Gesamte nr“ für die Sofort-Suche nötig)', 'org' => 'Organismus oder Gruppe', 'org_ph' => 'Name eintippen, z. B. Homo sapiens, Fungi, Coronaviridae',
   'org_help' => 'Einschließlich aller Untergruppen. Bis zu 20 Einträge.', 'len' => 'Länge der Treffer-Sequenz (Aminosäuren)',
   'len_min' => 'von', 'len_max' => 'bis', 'advanced' => 'Weitere Einstellungen', 'evalue' => 'E-Wert (Schwelle)',
   'maxhits' => 'Treffer pro Anfrage-Sequenz', 'go' => 'Sofort suchen (max. 5 Minuten)',
@@ -38,7 +41,7 @@ $T = [
   'col_ident' => 'Identität %', 'col_len' => 'Länge', 'col_evalue' => 'E-Wert', 'col_bits' => 'Bit-Score',
   'remove' => 'entfernen', 'experts' => 'Für Programme: JSON-API', 'source' => 'Quellcode',
   'data' => 'Daten: NCBI nr (täglich ergänzt). Suche: DIAMOND (Buchfink et al., Nat. Methods 2021).',
-  'keep' => 'Link zu diesem Ergebnis:', 'need_presel' => 'Für die Sofort-Suche bitte einen Organismus, ein Längenfenster oder „letzte N Tage“ angeben – oder die Vollsuche per Mail nutzen.',
+  'keep' => 'Link zu diesem Ergebnis:', 'need_presel' => 'Für die Sofort-Suche in der gesamten nr bitte einen Organismus, ein Längenfenster oder „letzte N Tage“ angeben – oder die Datenbank Säugetiere wählen oder die Vollsuche per Mail nutzen.',
   'newest' => 'Die 60 neuesten menschlichen Sequenzen in nr (länger als 10 Aminosäuren)',
   'new_days' => 'Nur Sequenzen, die NCBI in den letzten N Tagen veröffentlicht oder aktualisiert hat', 'new_days_ph' => 'z. B. 7',
  ],
@@ -51,7 +54,10 @@ $T = [
   'acc_ph' => 'e.g. YP_009724390.1', 'range' => 'Range (optional)', 'range_ph' => 'e.g. 319-541',
   'program' => 'Program', 'blastp' => 'blastp – protein against protein', 'blastx' => 'blastx – DNA/RNA, translated against protein',
   'sens' => 'Sensitivity', 'sens_help' => 'Higher = finds more distant relatives, but takes much longer.',
-  'presel' => 'Restriction (needed for the instant search)', 'org' => 'Organism or group', 'org_ph' => 'Type a name, e.g. Homo sapiens, Fungi, Coronaviridae',
+  'dbsel' => 'Database', 'db_mammalia' => 'Mammals (Mammalia, more than 15 million sequences)',
+  'db_nr' => 'Whole nr (more than 1.1 billion sequences – instant search only with a restriction)',
+  'db_help' => 'Mammals is the fastest choice for most questions from human medicine. The organism filter below narrows the search further inside the selected database.',
+  'presel' => 'Further restriction (needed for the instant search in the whole nr)', 'org' => 'Organism or group', 'org_ph' => 'Type a name, e.g. Homo sapiens, Fungi, Coronaviridae',
   'org_help' => 'Including all sub-groups. Up to 20 entries.', 'len' => 'Length of the hit sequence (amino acids)',
   'len_min' => 'from', 'len_max' => 'to', 'advanced' => 'More settings', 'evalue' => 'E-value (threshold)',
   'maxhits' => 'Hits per query sequence', 'go' => 'Search now (max. 5 minutes)',
@@ -67,7 +73,7 @@ $T = [
   'col_ident' => 'Identity %', 'col_len' => 'Length', 'col_evalue' => 'E-value', 'col_bits' => 'Bit score',
   'remove' => 'remove', 'experts' => 'For programs: JSON API', 'source' => 'Source code',
   'data' => 'Data: NCBI nr (extended daily). Search: DIAMOND (Buchfink et al., Nat. Methods 2021).',
-  'keep' => 'Link to this result:', 'need_presel' => 'For the instant search please give an organism, a length window or "last N days" – or use the full search by mail.',
+  'keep' => 'Link to this result:', 'need_presel' => 'For the instant search in the whole nr please give an organism, a length window or "last N days" – or choose the database Mammals, or use the full search by mail.',
   'newest' => 'The 60 newest human sequences in nr (longer than 10 amino acids)',
   'new_days' => 'Only sequences NCBI published or updated in the last N days', 'new_days_ph' => 'e.g. 7',
  ],
@@ -121,6 +127,15 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data:; style
     <div id="box_acc" class="row g-2" hidden>
       <div class="col-md-6"><input class="form-control" id="acc" placeholder="<?= h($T['acc_ph']) ?>"></div>
       <div class="col-md-6"><input class="form-control" id="range" placeholder="<?= h($T['range']) ?>: <?= h($T['range_ph']) ?>"></div>
+    </div>
+
+    <div class="mt-3">
+      <label class="form-label small text-body-secondary mb-1" for="dbsel"><?= h($T['dbsel']) ?></label>
+      <select class="form-select" id="dbsel">
+        <option value="mammalia" selected><?= h($T['db_mammalia']) ?></option>
+        <option value="nr"><?= h($T['db_nr']) ?></option>
+      </select>
+      <div class="form-text"><?= h($T['db_help']) ?></div>
     </div>
 
     <div class="row g-3 mt-1">

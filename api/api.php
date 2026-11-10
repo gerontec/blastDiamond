@@ -26,6 +26,8 @@ const RAM_MAX_GB = 48;         // as in blast_api_worker.py: limit = min(RAM_MAX
 const RAM_RESERVE_GB = 4;
 const AMYLO_MAX = 5000;        // windows = length - window + 1; 5000 residues take ~8 min on the P4
 const SENS = ['fast', 'mid-sensitive', 'sensitive', 'more-sensitive', 'very-sensitive', 'ultra-sensitive'];
+// database selection (db=…): name => [part name in blast_part, root taxid]; 'nr' = whole nr (default of the API)
+const DBS = ['nr' => null, 'mammalia' => ['p1_mammalia', 40674]];
 // query by accession instead of sequence: residues from the DIAMOND nr, masked stretches (X) fetched from NCBI by nr_seq.py
 const NR_SEQ_PY = '/home/gh/iver_sim/mamba/envs/iver/bin/python';
 const NR_SEQ = '/home/gh/python/nr_seq.py';
@@ -154,6 +156,8 @@ function parse_query(int $maxRecords, int $maxLetters): array
     if ($max < 1 || $max > 500) fail('max_target_seqs: 1..500', 400);
     $tax = param('taxonlist', '');
     if ($tax !== '' && !preg_match('/^\d{1,8}(,\d{1,8}){0,19}$/', $tax)) fail('taxonlist: up to 20 TaxIDs, comma-separated', 400);
+    $dbName = param('db', 'nr');
+    if (!array_key_exists($dbName, DBS)) fail('db: ' . implode('|', array_keys(DBS)), 400);
     // pre-selection via MariaDB (dmnd_preselect.py): only the matching sequences are searched
     $lmin = param('len_min', '');
     $lmax = param('len_max', '');
@@ -198,6 +202,7 @@ function parse_query(int $maxRecords, int $maxLetters): array
     if ($n > $maxRecords) fail('at most ' . $maxRecords . ' sequences', 413);
     if ($letters > $maxLetters) fail('at most ' . $maxLetters . ' letters', 413);
     return ['mode' => $mode, 'sens' => $sens, 'evalue' => $evalue, 'max' => $max, 'tax' => $tax ?: null,
+            'db' => DBS[$dbName][0] ?? null, 'db_root' => DBS[$dbName][1] ?? null, 'db_name' => $dbName,
             'lmin' => $lmin === '' ? null : (int)$lmin, 'lmax' => $lmax === '' ? null : (int)$lmax,
             'new' => $new === '' ? null : (int)$new, 'fasta' => $fasta, 'n' => $n, 'letters' => $letters];
 }
@@ -207,12 +212,26 @@ function insert_job(PDO $db, int $keyId, string $tier, array $q, string $status 
                     ?string $token = null, ?int $budget = null): string
 {
     global $client;
+    if ($q['db_root'] && $q['tax']) {          // the organism filter must lie inside the selected database
+        $ids = array_map('intval', explode(',', $q['tax']));
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        $st = $db->prepare("WITH RECURSIVE up AS (SELECT taxid AS start, taxid, parent FROM blast_taxon WHERE taxid IN ($ph)
+                            UNION SELECT up.start, t.taxid, t.parent FROM blast_taxon t JOIN up ON t.taxid = up.parent
+                            AND up.taxid <> up.parent) SELECT DISTINCT start FROM up WHERE taxid = ?");
+        $st->execute([...$ids, $q['db_root']]);
+        $out = array_diff($ids, array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN)));
+        if ($out) {
+            $names = taxon_names($db, $out);
+            fail('organism outside the selected database (' . $q['db_name'] . '): '
+                 . implode(', ', array_map(fn($t) => ($names[$t] ?? $t) . " ($t)", $out)) . '; choose db=nr', 400);
+        }
+    }
     $id = bin2hex(random_bytes(12));
     $db->prepare('INSERT INTO blast_job (job_id, key_id, tier, client_ip, email, confirm_token, budget_s, status, mode,
-                  sensitivity, evalue, max_target_seqs, taxonlist, len_min, len_max, new_days, query, n_query, query_letters)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                  sensitivity, evalue, max_target_seqs, taxonlist, db, len_min, len_max, new_days, query, n_query, query_letters)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
        ->execute([$id, $keyId, $tier, $client, $email, $token, $budget, $status, $q['mode'], $q['sens'], $q['evalue'],
-                  $q['max'], $q['tax'], $q['lmin'], $q['lmax'], $q['new'], $q['fasta'], $q['n'], $q['letters']]);
+                  $q['max'], $q['tax'], $q['db'], $q['lmin'], $q['lmax'], $q['new'], $q['fasta'], $q['n'], $q['letters']]);
     return $id;
 }
 
@@ -244,11 +263,12 @@ case 'help':
             'GET ?r=acc&acc=YP_009724390.1' => 'sequence metadata for an accession (without .version: latest)',
             'GET ?r=taxon&taxid=9606 | &name=Homo sapiens' => 'taxon with its lineage',
             'POST ?r=search (X-Api-Key)' => 'seq (FASTA or raw sequence) OR acc=YP_009724390.1 [range=319-541] (sequence from nr), '
-                . 'mode=blastp|blastx, taxonlist=4751,9606 (including sub-taxa), len_min=100, len_max=400 (length of the hit '
+                . 'mode=blastp|blastx, db=' . implode('|', array_keys(DBS)) . ' (default nr; mammalia = Mammalia 40674 only, '
+                . 'taxonlist must then lie inside it), taxonlist=4751,9606 (including sub-taxa), len_min=100, len_max=400 (length of the hit '
                 . 'sequence), new_days=90 (NCBI date of the record within the last N days), evalue=0.001, max_target_seqs=25, '
                 . 'sensitivity=' . implode('|', SENS),
             'GET ?r=job&id=…' => 'status and hits (with title and taxon from MariaDB)',
-            'POST ?r=adhoc (no key)' => 'like search, but only with a pre-selection (taxonlist and/or len_min/len_max) and only '
+            'POST ?r=adhoc (no key)' => 'like search, but only with db=mammalia or a pre-selection (taxonlist and/or len_min/len_max) and only '
                 . 'if the predicted time fits ' . ADHOC_BUDGET_S . ' s, otherwise status "rejected" with the reason; '
                 . 'one open search per address, ' . ADHOC_MAX_RECORDS . ' sequences / ' . ADHOC_MAX_LETTERS . ' letters',
             'POST ?r=full (no key)' => 'search of the whole nr, email=… required: one per address and day, starts after the '
@@ -349,8 +369,9 @@ case 'adhoc':
     [$nr] = status($db);
     if (!$nr || $nr['dmnd_hash'] === null) fail('DIAMOND database not ready yet', 503);
     $q = parse_query(ADHOC_MAX_RECORDS, ADHOC_MAX_LETTERS);
-    if (!$q['tax'] && !$q['lmin'] && !$q['lmax'] && !$q['new']) {
-        fail('an ad-hoc search needs a pre-selection (organism and/or length); the whole nr only as a full search by mail', 400);
+    if (!$q['db'] && !$q['tax'] && !$q['lmin'] && !$q['lmax'] && !$q['new']) {
+        fail('an ad-hoc search needs a database other than nr (db=mammalia) or a pre-selection (organism and/or length); '
+             . 'the whole nr only as a full search by mail', 400);
     }
     $st = $db->prepare("SELECT SUM(status IN ('queued','running')), SUM(erstellt >= NOW() - INTERVAL 1 DAY)
                         FROM blast_job WHERE tier = 'adhoc' AND client_ip = ?");
@@ -433,7 +454,7 @@ case 'taxsearch':
 case 'job':
     $id = param('id', '');
     if (!preg_match('/^[0-9a-f]{24}$/', $id)) fail('invalid id', 400);
-    $st = $db->prepare('SELECT job_id, tier, status, mode, sensitivity, evalue, max_target_seqs, taxonlist, len_min, len_max, new_days,
+    $st = $db->prepare('SELECT job_id, tier, status, mode, sensitivity, evalue, max_target_seqs, taxonlist, db, len_min, len_max, new_days,
                                n_query, query_letters, erstellt AS created, gestartet AS started, fertig AS finished,
                                sekunden AS seconds, budget_s, est_seconds, release_id, dmnd_hash, n_hits,
                                preselect, block_size, ram_est_gb, ram_gb, ram_free_gb, error

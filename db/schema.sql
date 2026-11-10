@@ -160,6 +160,7 @@ CREATE TABLE `blast_job` (
   `evalue` double NOT NULL,
   `max_target_seqs` smallint(5) unsigned NOT NULL,
   `taxonlist` varchar(255) DEFAULT NULL,
+  `db` varchar(32) DEFAULT NULL COMMENT 'database selection: NULL = whole nr, else part name (blast_part.part)',
   `len_min` int(10) unsigned DEFAULT NULL,
   `len_max` int(10) unsigned DEFAULT NULL,
   `new_days` smallint(5) unsigned DEFAULT NULL COMMENT 'NCBI createdate within the last N days',

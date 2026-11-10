@@ -61,7 +61,7 @@
 
   // ---------------------------------------------------------------- request body
   function body() {
-    const b = { mode: $("mode").value, sensitivity: $("sens").value, evalue: $("evalue").value.trim() || "0.001",
+    const b = { db: $("dbsel").value, mode: $("mode").value, sensitivity: $("sens").value, evalue: $("evalue").value.trim() || "0.001",
                 max_target_seqs: $("maxhits").value || "25" };
     if (document.querySelector("input[name=qkind]:checked").value === "acc") {
       b.acc = $("acc").value.trim();
@@ -90,7 +90,7 @@
     ev.preventDefault();
     banner("", "");
     const b = body();
-    if (!b.taxonlist && !b.len_min && !b.len_max && !b.new_days) { banner("info", esc(t("need_presel"))); return; }
+    if (b.db === "nr" && !b.taxonlist && !b.len_min && !b.len_max && !b.new_days) { banner("info", esc(t("need_presel"))); return; }
     $("go").disabled = true;
     const [code, d] = await post("adhoc", b);
     $("go").disabled = false;
@@ -181,6 +181,7 @@
     ev.preventDefault();
     const b = body();
     b.email = $("email").value.trim();
+    b.db = "nr";                       // the full search by mail always covers the whole nr
     const [code, d] = await post("full", b);
     $("fullstatus").innerHTML = code === 202
       ? '<div class="alert alert-success mb-0">' + esc(t("full_sent")) + "</div>"

@@ -196,7 +196,7 @@ names `neu_tage` and `von`/`bis` are still accepted as aliases of `new_days` and
 | `GET ?r=release` | which nr release is loaded, daily deltas, readiness, free memory and measured k |
 | `GET ?r=acc&acc=…` | metadata for an accession, including identical entries and taxa |
 | `GET ?r=taxon&taxid=…` | taxon with its lineage |
-| `POST ?r=search` | DIAMOND search — `seq=…`, or `acc=…` plus optional `range=319-541`; filters `taxonlist`, `len_min`/`len_max`, `new_days` |
+| `POST ?r=search` | DIAMOND search — `seq=…`, or `acc=…` plus optional `range=319-541`; database `db=nr|mammalia` (default `nr`; `mammalia` = part DB Mammalia, `taxonlist` must lie inside it); filters `taxonlist`, `len_min`/`len_max`, `new_days` |
 | `GET ?r=job&id=…` | search status and hits, titles and taxa joined from MariaDB |
 | `POST ?r=adhoc` | no key: like `search`, with a restriction, only if it fits 300 s (else status `rejected` with the reason) |
 | `POST ?r=full` | no key: search of the whole nr, `email=…`, one per address and day, after confirmation |

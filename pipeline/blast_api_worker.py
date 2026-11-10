@@ -19,7 +19,7 @@ letters) and --block-size b is chosen so that it stays below min(RAM_MAX_GB, Mem
 k (GB per billion letters) comes from blast_ram_log: the peak RSS of earlier searches with the same mode and
 sensitivity and a similar query size; without measurements the start values K_START apply. Every search runs
 under /usr/bin/time and adds its own peak RSS to blast_ram_log."""
-import os, sys, time, fcntl, tempfile, subprocess, signal, smtplib
+import os, sys, json, time, fcntl, tempfile, subprocess, signal, smtplib
 from email.message import EmailMessage
 from email.utils import formatdate
 import blast_db, pymysql
@@ -98,19 +98,28 @@ def estimate_k(c, mode, sens, q_letters):
     return k * 1.2, "start value"
 
 
-def search_rate(c, mode, sens):
+Q_MIN = 1300   # below this query length the search time hardly depends on it (Mammalia fast: 100 aa 12.9 s, 1273 aa 13.0 s)
+
+
+def search_rate(c, mode, sens, db_letters=None):
     """Seconds per (query letter x billion DB letters), the largest value measured for mode and sensitivity:
     calibration runs (blast_calib, timeouts count as lower bounds) and earlier searches (blast_ram_log).
-    Only runs with q x L >= 0.01 G count, below that diamond's start-up time dominates. None = no data."""
-    c.execute("SELECT MAX(r) FROM ("
-              " SELECT (seconds - 1) / (query_letters * db_letters / 1e9) AS r FROM blast_calib"
-              "  WHERE kind = 'search' AND mode = %s AND sensitivity = %s AND query_letters * db_letters >= 1e7"
-              "  AND (ok = 1 OR note LIKE 'timeout%%')"
-              " UNION ALL SELECT (seconds - 1) / (query_letters * db_letters / 1e9) FROM blast_ram_log"
-              "  WHERE ok = 1 AND mode = %s AND sensitivity = %s AND query_letters * db_letters >= 1e7) x",
-              (mode, sens, mode, sens))
-    r = c.fetchone()[0]
-    return float(r) if r is not None else None
+    Query lengths below Q_MIN count as Q_MIN. With db_letters only runs on databases of at least a quarter of
+    that size count (on small databases diamond's start-up time dominates and inflates the rate); without
+    such runs all count. Only runs with q x L >= 0.01 G count. None = no data."""
+    sql = ("SELECT MAX(r) FROM ("
+           " SELECT (seconds - 1) / (GREATEST(query_letters, %s) * db_letters / 1e9) AS r FROM blast_calib"
+           "  WHERE kind = 'search' AND mode = %s AND sensitivity = %s AND query_letters * db_letters >= 1e7"
+           "  AND (ok = 1 OR note LIKE 'timeout%%') AND db_letters >= %s"
+           " UNION ALL SELECT (seconds - 1) / (GREATEST(query_letters, %s) * db_letters / 1e9) FROM blast_ram_log"
+           "  WHERE ok = 1 AND mode = %s AND sensitivity = %s AND query_letters * db_letters >= 1e7"
+           "  AND db_letters >= %s) x")
+    for floor in ((db_letters / 4, 0) if db_letters else (0,)):
+        c.execute(sql, (Q_MIN, mode, sens, floor, Q_MIN, mode, sens, floor))
+        r = c.fetchone()[0]
+        if r is not None:
+            return float(r)
+    return None
 
 
 def build_rate(c):
@@ -125,10 +134,10 @@ def build_rate(c):
 
 def predict_seconds(c, mode, sens, q_letters, db_letters):
     """Predicted diamond wall time (with ADHOC_SAFETY margin), None without measurements."""
-    rate = search_rate(c, mode, sens)
+    rate = search_rate(c, mode, sens, db_letters)
     if rate is None:
         return None
-    return round((1 + max(rate, 0) * q_letters * db_letters / 1e9) * ADHOC_SAFETY, 1)
+    return round((1 + max(rate, 0) * max(q_letters, Q_MIN) * db_letters / 1e9) * ADHOC_SAFETY, 1)
 
 
 def ram_plan(c, mode, sens, q_letters, db_letters, wait_min=None):
@@ -195,8 +204,26 @@ def run_limited(cmd, timeout):
     return subprocess.CompletedProcess(cmd, p.returncode, out, err)
 
 
+PART_ROOT = {"p1_mammalia": 40674}     # database selection (blast_job.db) -> root taxid, as DBS in api.php
+
+
+def part_db(c, name):
+    """(dmnd, letters, n_seq, nr_letters, dmnd_hash) of a built part, or None while it is not built yet. nr_letters (for
+    --dbsize, E-values as in a search of the whole nr) comes from the part's .json, so nr_full is not needed."""
+    c.execute("SELECT dmnd, letters, n_seq, dmnd_hash FROM blast_part WHERE part=%s", (name,))
+    row = c.fetchone()
+    if not row or not os.path.exists(row[0]):
+        return None
+    try:
+        nr_letters = json.load(open(row[0][:-len(".dmnd")] + ".json"))["source_letters"]
+    except (OSError, ValueError, KeyError):
+        return None
+    return row[0], int(row[1]), int(row[2]), int(nr_letters), row[3]
+
+
 def run_job(c, job):
-    job_id, mode, sens, evalue, max_t, taxonlist, query, len_min, len_max, new_days, q_letters, tier, budget = job
+    (job_id, mode, sens, evalue, max_t, taxonlist, query, len_min, len_max, new_days, q_letters, tier, budget,
+     dbsel) = job
     adhoc = tier == "adhoc"
     budget = budget or 300
     os.makedirs(TMP, exist_ok=True)
@@ -213,10 +240,21 @@ def run_job(c, job):
             c.execute("SELECT release_id, dmnd_hash FROM blast_release WHERE quelle='nr' AND aktiv=1 "
                       "ORDER BY nr_datum DESC LIMIT 1")
             rel, dhash = c.fetchone()
-            if adhoc and not (taxonlist or len_min or len_max or new_days):
+            part = None
+            if dbsel:
+                # built part and no length/date filter: search the part itself; otherwise (part not built yet,
+                # or filters that need a pre-selection) restrict to the part's taxa by pre-selection
+                part = None if (len_min or len_max or new_days) else part_db(c, dbsel)
+                if part is None and not taxonlist:
+                    taxonlist = str(PART_ROOT[dbsel])
+            if part:
+                pdmnd, db_letters, pn, nr_letters, dhash = part   # the job records the part's hash
+                cmd += ["--db", pdmnd, "--dbsize", str(nr_letters)] + (["--taxonlist", taxonlist] if taxonlist else [])
+                pre = f"database {dbsel}: {pn} sequences, {db_letters} letters"
+            elif adhoc and not (taxonlist or len_min or len_max or new_days):
                 raise Rejected("a search of the whole nr cannot run ad hoc; restrict organism or length, "
                                "or request a full search by mail")
-            if taxonlist or len_min or len_max or new_days:
+            elif taxonlist or len_min or len_max or new_days:
                 taxa = [int(x) for x in (taxonlist or "").split(",") if x]
                 ps_kw = {}
                 if adhoc:   # cap the pre-selection at what the time budget could search at all
@@ -226,7 +264,7 @@ def run_job(c, job):
                                        "cannot be predicted")
                     # two caps: what the search could cover in the budget, and what can be built in 60 % of it
                     # (building cannot be interrupted; a cached pre-selection skips the build and both caps)
-                    max_letters = (budget - 1) / ADHOC_SAFETY / max(rate, 1e-9) / q_letters * 1e9
+                    max_letters = (budget - 1) / ADHOC_SAFETY / max(rate, 1e-9) / max(q_letters, Q_MIN) * 1e9
                     max_build = budget * 0.6 / ADHOC_SAFETY / build_rate(c)
                     ps_kw["max_seq"] = max(1000, min(dmnd_preselect.MAX_SEQ, int(max_letters / ADHOC_AVG_LEN),
                                                      int(max_build)))
@@ -345,10 +383,10 @@ def write_xlsx(c, job_id):
     from openpyxl import Workbook
     c.execute("SELECT j.tier, j.mode, j.sensitivity, j.evalue, j.max_target_seqs, j.taxonlist, j.len_min, j.len_max, "
               "j.new_days, j.n_query, j.query_letters, j.erstellt, j.sekunden, j.n_hits, j.preselect, j.dmnd_hash, "
-              "r.nr_datum FROM blast_job j LEFT JOIN blast_release r ON r.release_id = j.release_id WHERE j.job_id=%s",
+              "r.nr_datum, j.db FROM blast_job j LEFT JOIN blast_release r ON r.release_id = j.release_id WHERE j.job_id=%s",
               (job_id,))
     (tier, mode, sens, evalue, max_t, taxonlist, lmin, lmax, new_days, n_query, q_letters, created, secs, n_hits,
-     pre, dhash, nr_date) = c.fetchone()
+     pre, dhash, nr_date, dbsel) = c.fetchone()
     c.execute("SELECT h.qseqid, h.sseqid, s.title, h.staxids, h.pident, h.length, h.mismatch, h.gapopen, h.qstart, "
               "h.qend, h.sstart, h.send, h.evalue, h.bitscore FROM blast_job_hit h "
               "LEFT JOIN blast_acc a ON a.acc = h.sseqid LEFT JOIN blast_seq s ON s.oid = a.oid "
@@ -359,6 +397,7 @@ def write_xlsx(c, job_id):
     ws = wb.create_sheet("info")
     for k, v in [("job", job_id), ("created", str(created)), ("program", f"DIAMOND {mode}, {sens}"),
                  ("e-value", evalue), ("max. hits per query", max_t),
+                 ("database selection", f"{dbsel} (taxon {PART_ROOT.get(dbsel, '')})" if dbsel else "whole nr"),
                  ("organism filter", ", ".join(f"{names.get(int(t), t)} ({t})" for t in (taxonlist or "").split(",") if t)
                   or "none"),
                  ("length filter", f"{lmin or ''}..{lmax or ''}" if (lmin or lmax) else "none"),
@@ -506,7 +545,7 @@ def main():
                 continue
             # one job at a time; ad-hoc jobs (query form, short by construction) before waiting key/full jobs
             c.execute("SELECT job_id, mode, sensitivity, evalue, max_target_seqs, taxonlist, query, "
-                      "len_min, len_max, new_days, query_letters, tier, budget_s FROM blast_job WHERE status='queued' "
+                      "len_min, len_max, new_days, query_letters, tier, budget_s, db FROM blast_job WHERE status='queued' "
                       "ORDER BY tier = 'adhoc' DESC, erstellt LIMIT 1")
             job = c.fetchone()
             if not job:
