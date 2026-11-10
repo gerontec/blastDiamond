@@ -19,7 +19,9 @@ $T = [
                    . 'einzelne Protein, nicht für den Organismus: das Spike von SARS-CoV-2 steht hier, sein '
                    . 'Nukleokapsid nicht. Gezeigt werden nur Treffer ab 85 % Identität - das ist praktisch '
                    . 'dasselbe Protein. Schwächere Ähnlichkeiten werden mitgeführt, aber nicht gezeigt: ein '
-                   . 'konserviertes Enzym ohne jede Rolle bei einer Infektion erreicht 50 bis 60 %.',
+                   . 'konserviertes Enzym ohne jede Rolle bei einer Infektion erreicht 50 bis 60 %. '
+                   . 'In der Liste steht eine Sequenz, sobald eine einzige Kategorie ihrer Bitmaske '
+                   . 'gesetzt ist; welche es ist, zeigt die Spalte Art.',
           'org' => 'Organismus', 'ref' => 'ähnlich zu (Swiss-Prot)', 'pid' => 'Identität', 'kind' => 'Art',
           'virulence' => 'Virulenzfaktor', 'toxin' => 'Toxin', 'refs' => 'Referenzproteine',
           'pempty' => 'Noch keine markierten Sequenzen.',
@@ -36,7 +38,8 @@ $T = [
                    . 'protein, not to the organism: the spike of SARS-CoV-2 is here, its nucleocapsid is not. '
                    . 'Only hits of 85 % identity or more are shown - that is practically the same protein. '
                    . 'Weaker similarities are kept but not shown: a conserved enzyme with no role in an '
-                   . 'infection reaches 50 to 60 %.',
+                   . 'infection reaches 50 to 60 %. A sequence is listed as soon as a single category '
+                   . 'of its bit mask is set; which one it is, the column Kind shows.',
           'org' => 'Organism', 'ref' => 'similar to (Swiss-Prot)', 'pid' => 'identity', 'kind' => 'Kind',
           'virulence' => 'virulence factor', 'toxin' => 'toxin', 'refs' => 'reference proteins',
           'pempty' => 'No flagged sequences yet.',

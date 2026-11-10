@@ -509,8 +509,13 @@ PATHOGEN_MIN_PIDENT = 85.0   # below that, a conserved enzyme without any role i
 
 
 def write_newest_pathogen(c):
-    """Cache file for the form: the PATHOGEN_N nr sequences most recently flagged is_pathog (blast_pathogen_hit,
-    filled by the daily pathogen_scan.py), with the reference protein the flag comes from and how identical it is.
+    """Cache file for the form: the PATHOGEN_N nr sequences most recently flagged (blast_pathogen_hit, filled by
+    the daily pathogen_scan.py), with the reference protein the flag comes from and how identical it is.
+
+    Inclusion rule: ONE set category of the bit mask is enough (flags <> 0) - a sequence does not have to be a
+    toxin as well as a virulence factor, and no category is preferred over another. The categories themselves are
+    listed per row in 'kinds', so the reader sees which one it was.
+
     The flag is per protein, not per organism: the spike of SARS-CoV-2 is in, its nucleocapsid is not."""
     import json
     c.execute("SELECT bit_value, name, class FROM blast_flag_bit ORDER BY bit_value")
@@ -523,7 +528,7 @@ def write_newest_pathogen(c):
                    JOIN blast_seq_herkunft s ON s.oid = h.oid
                    JOIN blast_vf_ref r ON r.acc = h.ref_acc
                    LEFT JOIN blast_taxon t ON t.taxid = a.taxid
-                 WHERE h.pident >= %s
+                 WHERE h.flags <> 0 AND h.pident >= %s
                  ORDER BY h.found DESC, h.oid DESC LIMIT %s""", (PATHOGEN_MIN_PIDENT, PATHOGEN_N))
     items = [{"acc": acc, "oid": oid, "taxid": taxid, "organism": org, "length": ln, "title": title,
               "ncbi_date": str(nd) if nd else None, "ref_acc": ref, "pident": float(pid),
@@ -541,6 +546,7 @@ def write_newest_pathogen(c):
     tmp = os.path.join(RESULT_DIR, ".newest_pathogen.json.part")
     json.dump({"updated": time.strftime("%Y-%m-%d %H:%M:%S"), "reference_proteins": ref_n,
                "min_pident": PATHOGEN_MIN_PIDENT,
+               "rule": "a sequence is listed as soon as one category of its bit mask is set (flags <> 0)",
                "categories": [{"bit": b, "name": n, "class": cl} for b, n, cl in bits],
                "last_scan": {"date": str(last[0]), "new_sequences": last[1], "flagged": last[2]} if last else None,
                "items": items}, open(tmp, "w"), ensure_ascii=False)
