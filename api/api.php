@@ -277,7 +277,7 @@ case 'help':
             'GET ?r=jobxlsx&id=…' => 'hits of a form job (adhoc/full) as Excel file',
             'GET ?r=taxsearch&q=Homo' => 'organism names starting with q (for the form)',
             'GET ?r=newest' => 'the 60 Homo sapiens sequences longer than 10 aa most recently added to nr (cached hourly)',
-            'GET ?r=newest_pathogen' => 'the 60 sequences most recently flagged as a virulence factor or toxin, with the curated protein the flag comes from (cached hourly)',
+            'GET ?r=newest_pathogen' => 'the 60 sequences most recently flagged as a virulence factor or toxin at 85 % identity or more, with the curated protein the flag comes from (cached hourly)',
             'POST ?r=amylo (X-Api-Key)' => 'amyloid propensity per window (AmyloDeep on the Tesla P4): '
                 . 'acc=YP_009724390.1 [from=194&to=203] or seq=…, window=4..40 (default 10)',
             'GET ?r=amylojob&id=…' => 'status and window scores of the AmyloDeep job',

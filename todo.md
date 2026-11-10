@@ -44,9 +44,9 @@ Swiss-Prot. Live: `blast_vf_ref`, `blast_flag_bit` (46 categories, extends itsel
 - [ ] deploy the web part and the worker to the public host; the cache file `newest_pathogen.json` is written
       by the worker, so the worker has to be restarted there
 - [ ] the daily cron has not fired yet (first time 2026-11-11 06:15)
-- [ ] decide whether the list should show only hits of at least 90 % identity: a conserved plant enzyme reaches
-      52 % to a bacterial virulence factor and is then marked, which is correct as homology and misleading as a
-      statement
+- decided 2026-11-10: the public list and the API show only hits of **85 % identity or more** (4 113 of 41 619);
+  weaker hits stay in `blast_pathogen_hit`, because a conserved plant enzyme reaches 52 % to a bacterial
+  virulence factor without being one
 - [ ] the flags of the 1.17 billion sequences already in nr are not computed; only new deliveries are scanned.
       A backfill of the whole nr would be about 70 CPU hours at the measured rate (154 315 sequences in 2 s) -
       worth it for the 13.4 million virus sequences of p3 first

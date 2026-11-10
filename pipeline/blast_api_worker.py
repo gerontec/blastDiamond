@@ -505,6 +505,7 @@ def write_newest(c):
 
 
 PATHOGEN_N = 60
+PATHOGEN_MIN_PIDENT = 85.0   # below that, a conserved enzyme without any role in an infection reaches the reference protein
 
 
 def write_newest_pathogen(c):
@@ -522,7 +523,8 @@ def write_newest_pathogen(c):
                    JOIN blast_seq_herkunft s ON s.oid = h.oid
                    JOIN blast_vf_ref r ON r.acc = h.ref_acc
                    LEFT JOIN blast_taxon t ON t.taxid = a.taxid
-                 ORDER BY h.found DESC, h.oid DESC LIMIT %s""", (PATHOGEN_N,))
+                 WHERE h.pident >= %s
+                 ORDER BY h.found DESC, h.oid DESC LIMIT %s""", (PATHOGEN_MIN_PIDENT, PATHOGEN_N))
     items = [{"acc": acc, "oid": oid, "taxid": taxid, "organism": org, "length": ln, "title": title,
               "ncbi_date": str(nd) if nd else None, "ref_acc": ref, "pident": float(pid),
               "qcov": float(qcov) if qcov is not None else None, "evalue": float(ev), "flags": int(fl),
@@ -533,11 +535,12 @@ def write_newest_pathogen(c):
     c.execute("SELECT COUNT(*) FROM blast_vf_ref")
     ref_n = c.fetchone()[0]
     c.execute("SELECT datum, n_new, n_hit FROM blast_pathogen_run WHERE n_hit IS NOT NULL "
-              "ORDER BY datum DESC LIMIT 1")
+              "ORDER BY datum DESC, id DESC LIMIT 1")
     last = c.fetchone()
     os.makedirs(RESULT_DIR, exist_ok=True)
     tmp = os.path.join(RESULT_DIR, ".newest_pathogen.json.part")
     json.dump({"updated": time.strftime("%Y-%m-%d %H:%M:%S"), "reference_proteins": ref_n,
+               "min_pident": PATHOGEN_MIN_PIDENT,
                "categories": [{"bit": b, "name": n, "class": cl} for b, n, cl in bits],
                "last_scan": {"date": str(last[0]), "new_sequences": last[1], "flagged": last[2]} if last else None,
                "items": items}, open(tmp, "w"), ensure_ascii=False)

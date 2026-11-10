@@ -11,8 +11,9 @@ $T = [
           'plead' => 'Neu aufgenommene Proteine, die einem handgeprüften Virulenzfaktor oder Toxin aus Swiss-Prot '
                    . 'ähnlich sind (Stichwort Virulence KW-0843 oder Toxin KW-0800). Das Merkmal gilt für das '
                    . 'einzelne Protein, nicht für den Organismus: das Spike von SARS-CoV-2 steht hier, sein '
-                   . 'Nukleokapsid nicht. Ab 90 % Identität ist es praktisch dasselbe Protein, darunter eine '
-                   . 'Übertragung der Annotation auf ein verwandtes Protein - deshalb steht die Identität dabei.',
+                   . 'Nukleokapsid nicht. Gezeigt werden nur Treffer ab 85 % Identität - das ist praktisch '
+                   . 'dasselbe Protein. Schwächere Ähnlichkeiten werden mitgeführt, aber nicht gezeigt: ein '
+                   . 'konserviertes Enzym ohne jede Rolle bei einer Infektion erreicht 50 bis 60 %.',
           'org' => 'Organismus', 'ref' => 'ähnlich zu (Swiss-Prot)', 'pid' => 'Identität', 'kind' => 'Art',
           'virulence' => 'Virulenzfaktor', 'toxin' => 'Toxin', 'refs' => 'Referenzproteine',
           'pempty' => 'Noch keine markierten Sequenzen.',
@@ -24,8 +25,9 @@ $T = [
           'plead' => 'Newly added proteins that are similar to a manually curated virulence factor or toxin in '
                    . 'Swiss-Prot (keyword Virulence KW-0843 or Toxin KW-0800). The mark belongs to the single '
                    . 'protein, not to the organism: the spike of SARS-CoV-2 is here, its nucleocapsid is not. '
-                   . 'From 90 % identity on it is practically the same protein, below that the annotation is '
-                   . 'transferred to a related protein - which is why the identity is shown.',
+                   . 'Only hits of 85 % identity or more are shown - that is practically the same protein. '
+                   . 'Weaker similarities are kept but not shown: a conserved enzyme with no role in an '
+                   . 'infection reaches 50 to 60 %.',
           'org' => 'Organism', 'ref' => 'similar to (Swiss-Prot)', 'pid' => 'identity', 'kind' => 'Kind',
           'virulence' => 'virulence factor', 'toxin' => 'toxin', 'refs' => 'reference proteins',
           'pempty' => 'No flagged sequences yet.',

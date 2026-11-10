@@ -228,15 +228,16 @@ which inherited down the lineage marks every bacterium).
 | the flags | one bit mask `flags` per sequence in `blast_pathogen_hit`, `is_pathog = flags <> 0`, `is_toxic` = the bits whose class is `toxin` |
 | what the bits mean | `blast_flag_bit`, one row per category (46 at the moment: Toxin, Virulence, Neurotoxin, Ion channel impairing toxin, …). **The table extends itself**: a category that turns up in the source and has no bit yet gets the next free one, and bits already given out never change their value |
 | the measurement | `blast_pathogen_run`: one row per daily scan with its thresholds, how many sequences came in and how many were flagged |
-| in the form | the second table on <https://blast.heissa.de/newest.php>, and `api.php?r=newest_pathogen` |
+| in the form | the second table on <https://blast.heissa.de/newest.php>, and `api.php?r=newest_pathogen` - both show only hits of **85 % identity or more** |
 
 Only flagged sequences get a row: the 1.17 billion others cost nothing, and `blast_acc` (1.94 billion rows) is
 not touched by any of it.
 
-**What the flag is worth, and what it is not.** At 90 % identity and above it is practically the same protein as
-the curated one. Below that, the annotation is being transferred to a relative, which is a claim, not a
-measurement - that is why the identity is stored and shown with every hit. A conserved enzyme of a plant can
-reach 52 % identity to a bacterial virulence factor without being one. And "virulence" is the source's notion:
+**What the flag is worth, and what it is not.** At 85 % identity and above it is practically the same protein as
+the curated one, which is why the public list starts there (4 113 of the 41 619 flagged sequences of the first
+two weeks). Below that, the annotation is being transferred to a relative, which is a claim, not a measurement -
+those hits are kept in the table but not shown, because a conserved enzyme of a plant reaches 52 % identity to a
+bacterial virulence factor without being one. And "virulence" is the source's notion:
 Swiss-Prot also annotates housekeeping proteins that a pathogen needs for an infection (enolase, GroEL,
 glutamine synthetase), so they carry the flag as well.
 
