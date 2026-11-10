@@ -7,10 +7,28 @@ $T = [
  'de' => ['title' => 'Die 60 neuesten menschlichen Sequenzen in nr (länger als 10 Aminosäuren)', 'back' => '← zur Suche',
           'lead' => 'Proteinsequenzen von Homo sapiens, die zuletzt in die Datenbank aufgenommen wurden (tägliche Ergänzung aus GenBank und RefSeq). Die Liste wird stündlich erneuert.',
           'updated' => 'Stand', 'acc' => 'Accession', 'desc' => 'Beschreibung', 'len' => 'Länge (aa)', 'ncbi' => 'NCBI-Datum',
+          'ptitle' => 'Die 60 neuesten Sequenzen mit Pathogenitäts-Merkmal',
+          'plead' => 'Neu aufgenommene Proteine, die einem handgeprüften Virulenzfaktor oder Toxin aus Swiss-Prot '
+                   . 'ähnlich sind (Stichwort Virulence KW-0843 oder Toxin KW-0800). Das Merkmal gilt für das '
+                   . 'einzelne Protein, nicht für den Organismus: das Spike von SARS-CoV-2 steht hier, sein '
+                   . 'Nukleokapsid nicht. Ab 90 % Identität ist es praktisch dasselbe Protein, darunter eine '
+                   . 'Übertragung der Annotation auf ein verwandtes Protein - deshalb steht die Identität dabei.',
+          'org' => 'Organismus', 'ref' => 'ähnlich zu (Swiss-Prot)', 'pid' => 'Identität', 'kind' => 'Art',
+          'virulence' => 'Virulenzfaktor', 'toxin' => 'Toxin', 'refs' => 'Referenzproteine',
+          'pempty' => 'Noch keine markierten Sequenzen.',
           'added' => 'aufgenommen', 'src' => 'Quelle', 'search' => 'Ähnliche suchen', 'loading' => 'Lade …', 'error' => 'Liste gerade nicht verfügbar.'],
  'en' => ['title' => 'The 60 newest human sequences in nr (longer than 10 amino acids)', 'back' => '← back to the search',
           'lead' => 'Protein sequences of Homo sapiens most recently added to the database (daily additions from GenBank and RefSeq). The list is renewed every hour.',
           'updated' => 'As of', 'acc' => 'Accession', 'desc' => 'Description', 'len' => 'Length (aa)', 'ncbi' => 'NCBI date',
+          'ptitle' => 'The 60 newest sequences carrying a pathogenicity mark',
+          'plead' => 'Newly added proteins that are similar to a manually curated virulence factor or toxin in '
+                   . 'Swiss-Prot (keyword Virulence KW-0843 or Toxin KW-0800). The mark belongs to the single '
+                   . 'protein, not to the organism: the spike of SARS-CoV-2 is here, its nucleocapsid is not. '
+                   . 'From 90 % identity on it is practically the same protein, below that the annotation is '
+                   . 'transferred to a related protein - which is why the identity is shown.',
+          'org' => 'Organism', 'ref' => 'similar to (Swiss-Prot)', 'pid' => 'identity', 'kind' => 'Kind',
+          'virulence' => 'virulence factor', 'toxin' => 'toxin', 'refs' => 'reference proteins',
+          'pempty' => 'No flagged sequences yet.',
           'added' => 'added', 'src' => 'Source', 'search' => 'Search similar', 'loading' => 'Loading …', 'error' => 'List not available right now.'],
 ][$lang];
 function h($s): string { return htmlspecialchars((string)($s ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
@@ -39,6 +57,10 @@ header("Content-Security-Policy: default-src 'self'; style-src 'self'; script-sr
   <h1 class="h3"><?= h($T['title']) ?></h1>
   <p class="text-body-secondary"><?= h($T['lead']) ?></p>
   <div id="list"><div class="text-body-secondary"><?= h($T['loading']) ?></div></div>
+
+  <h2 class="h4 mt-5" id="pathogen-head"><?= h($T['ptitle']) ?></h2>
+  <p class="text-body-secondary small"><?= h($T['plead']) ?></p>
+  <div id="pathogen" style="scroll-margin-top:1rem"><div class="text-body-secondary"><?= h($T['loading']) ?></div></div>
 </main>
 <script src="assets/newest.js"></script>
 </body>

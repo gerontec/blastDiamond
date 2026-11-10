@@ -277,6 +277,7 @@ case 'help':
             'GET ?r=jobxlsx&id=…' => 'hits of a form job (adhoc/full) as Excel file',
             'GET ?r=taxsearch&q=Homo' => 'organism names starting with q (for the form)',
             'GET ?r=newest' => 'the 60 Homo sapiens sequences longer than 10 aa most recently added to nr (cached hourly)',
+            'GET ?r=newest_pathogen' => 'the 60 sequences most recently flagged as a virulence factor or toxin, with the curated protein the flag comes from (cached hourly)',
             'POST ?r=amylo (X-Api-Key)' => 'amyloid propensity per window (AmyloDeep on the Tesla P4): '
                 . 'acc=YP_009724390.1 [from=194&to=203] or seq=…, window=4..40 (default 10)',
             'GET ?r=amylojob&id=…' => 'status and window scores of the AmyloDeep job',
@@ -439,6 +440,14 @@ case 'jobxlsx':
 case 'newest':
     // the 60 sequences of Homo sapiens longer than 10 aa most recently added to nr, cached hourly by the worker
     $file = rtrim((string)($ini['result_dir'] ?? '/var/lib/blast_results'), '/') . '/newest_human.json';
+    if (!is_readable($file)) fail('not cached yet', 503);
+    header('Cache-Control: public, max-age=600');
+    readfile($file);
+    exit;
+
+case 'newest_pathogen':
+    // the 60 nr sequences most recently flagged is_pathog (virulence factor or toxin), cached hourly by the worker
+    $file = rtrim((string)($ini['result_dir'] ?? '/var/lib/blast_results'), '/') . '/newest_pathogen.json';
     if (!is_readable($file)) fail('not cached yet', 503);
     header('Cache-Control: public, max-age=600');
     readfile($file);

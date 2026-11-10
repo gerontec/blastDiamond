@@ -16,10 +16,11 @@ nr lock and deletes the old file; searches keep running on the old file until th
 
 ## 2. Benchmark
 
-`build/nr_part_bench.py` is armed on the server and starts by itself once p4 is moved; it writes `benchmark.md`:
-12 single-sequence searches on the largest part, average and maximum runtime, peak memory per run.
+Done 2026-11-10: `benchmark.md`, 12 single-sequence searches on `p4_pseudomonadota` (the largest part),
+average 262.9 s, maximum 285.8 s, 3 GB peak memory per run.
 
-- [ ] commit `benchmark.md` once it is written
+- [ ] the measurement ran while the last part was being copied from the USB disk (load 7-9 for the first
+      runs); a repeat on an idle machine would be the clean number
 - [ ] a second measurement with a higher sensitivity would be useful; the form offers six levels, only `fast`
       is measured
 
@@ -32,6 +33,24 @@ and daily files are pending.
 - [ ] start it by hand once and check: routing, OID lists extended, `blast_release`/`blast_part_release` rows,
       the mail
 - [ ] a restart after an interruption is implemented but untested
+
+## 4. Pathogenicity flags (new on 2026-11-10)
+
+`is_pathog` and `is_toxic` per protein, by homology to the 12 481 curated virulence factors and toxins of
+Swiss-Prot. Live: `blast_vf_ref`, `blast_flag_bit` (46 categories, extends itself), `blast_pathogen_hit`
+(41 619 flagged sequences from the deliveries of 2026-10-25 to 11-08), `blast_pathogen_run`, cron at 06:15
+(`pathogen_scan.py --pending`), second table on `newest.php` and `api.php?r=newest_pathogen`.
+
+- [ ] deploy the web part and the worker to the public host; the cache file `newest_pathogen.json` is written
+      by the worker, so the worker has to be restarted there
+- [ ] the daily cron has not fired yet (first time 2026-11-11 06:15)
+- [ ] decide whether the list should show only hits of at least 90 % identity: a conserved plant enzyme reaches
+      52 % to a bacterial virulence factor and is then marked, which is correct as homology and misleading as a
+      statement
+- [ ] the flags of the 1.17 billion sequences already in nr are not computed; only new deliveries are scanned.
+      A backfill of the whole nr would be about 70 CPU hours at the measured rate (154 315 sequences in 2 s) -
+      worth it for the 13.4 million virus sequences of p3 first
+- [ ] the reference set ages; UniProt releases every two months, so `vf_ref_build.py --all` needs a schedule
 
 ## 4. Smaller items
 

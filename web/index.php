@@ -47,6 +47,7 @@ $T = [
   'data' => 'Daten: NCBI nr (täglich ergänzt). Suche: DIAMOND (Buchfink et al., Nat. Methods 2021).',
   'keep' => 'Link zu diesem Ergebnis:', 'need_presel' => 'Für die Sofort-Suche in der gesamten nr bitte einen Organismus, ein Längenfenster oder „letzte N Tage“ angeben – oder die Datenbank Säugetiere wählen oder die Vollsuche per Mail nutzen.',
   'newest' => 'Die 60 neuesten menschlichen Sequenzen in nr (länger als 10 Aminosäuren)',
+  'newest_pathogen' => 'Die 60 neuesten Sequenzen mit Pathogenitäts-Merkmal (Virulenzfaktor oder Toxin)',
   'new_days' => 'Nur Sequenzen, die NCBI in den letzten N Tagen veröffentlicht oder aktualisiert hat', 'new_days_ph' => 'z. B. 7',
  ],
  'en' => [
@@ -80,6 +81,7 @@ $T = [
   'data' => 'Data: NCBI nr (extended daily). Search: DIAMOND (Buchfink et al., Nat. Methods 2021).',
   'keep' => 'Link to this result:', 'need_presel' => 'For the instant search in the whole nr please give an organism, a length window or "last N days" – or choose the database Mammals, or use the full search by mail.',
   'newest' => 'The 60 newest human sequences in nr (longer than 10 amino acids)',
+  'newest_pathogen' => 'The 60 newest sequences carrying a pathogenicity mark (virulence factor or toxin)',
   'new_days' => 'Only sequences NCBI published or updated in the last N days', 'new_days_ph' => 'e.g. 7',
  ],
 ][$lang];
@@ -112,6 +114,7 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data:; style
   <?php foreach ($T as $k => $v): ?> data-t-<?= h(str_replace('_', '-', $k)) ?>="<?= h($v) ?>"<?php endforeach; ?>>
   <p class="lead"><?= h($T['lead']) ?></p>
   <p><a class="fw-semibold" href="newest.php?lang=<?= $lang ?>">➜ <?= h($T['newest']) ?></a></p>
+  <p><a class="fw-semibold" href="newest.php?lang=<?= $lang ?>#pathogen">➜ <?= h($T['newest_pathogen']) ?></a></p>
 
   <div class="alert alert-warning">
     <strong><?= h($T['notice_h']) ?>.</strong> <?= h($T['notice']) ?>

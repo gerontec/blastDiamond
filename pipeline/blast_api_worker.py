@@ -504,6 +504,47 @@ def write_newest(c):
     os.replace(tmp, os.path.join(RESULT_DIR, "newest_human.json"))
 
 
+PATHOGEN_N = 60
+
+
+def write_newest_pathogen(c):
+    """Cache file for the form: the PATHOGEN_N nr sequences most recently flagged is_pathog (blast_pathogen_hit,
+    filled by the daily pathogen_scan.py), with the reference protein the flag comes from and how identical it is.
+    The flag is per protein, not per organism: the spike of SARS-CoV-2 is in, its nucleocapsid is not."""
+    import json
+    c.execute("SELECT bit_value, name, class FROM blast_flag_bit ORDER BY bit_value")
+    bits = [(int(b), n, cl) for b, n, cl in c.fetchall()]
+    c.execute("""SELECT h.oid, a.acc, a.taxid, t.name, s.len, s.title, s.ncbi_datum,
+                        h.ref_acc, h.pident, h.qcov, h.evalue, h.flags,
+                        r.protein_name, r.organism
+                 FROM blast_pathogen_hit h
+                   JOIN blast_acc a ON a.oid = h.oid AND a.pos = 0
+                   JOIN blast_seq_herkunft s ON s.oid = h.oid
+                   JOIN blast_vf_ref r ON r.acc = h.ref_acc
+                   LEFT JOIN blast_taxon t ON t.taxid = a.taxid
+                 ORDER BY h.found DESC, h.oid DESC LIMIT %s""", (PATHOGEN_N,))
+    items = [{"acc": acc, "oid": oid, "taxid": taxid, "organism": org, "length": ln, "title": title,
+              "ncbi_date": str(nd) if nd else None, "ref_acc": ref, "pident": float(pid),
+              "qcov": float(qcov) if qcov is not None else None, "evalue": float(ev), "flags": int(fl),
+              "kinds": [n for b, n, _ in bits if int(fl) & b],
+              "toxic": any(int(fl) & b for b, _, cl in bits if cl == "toxin"),
+              "ref_name": rname, "ref_organism": rorg}
+             for (oid, acc, taxid, org, ln, title, nd, ref, pid, qcov, ev, fl, rname, rorg) in c.fetchall()]
+    c.execute("SELECT COUNT(*) FROM blast_vf_ref")
+    ref_n = c.fetchone()[0]
+    c.execute("SELECT datum, n_new, n_hit FROM blast_pathogen_run WHERE n_hit IS NOT NULL "
+              "ORDER BY datum DESC LIMIT 1")
+    last = c.fetchone()
+    os.makedirs(RESULT_DIR, exist_ok=True)
+    tmp = os.path.join(RESULT_DIR, ".newest_pathogen.json.part")
+    json.dump({"updated": time.strftime("%Y-%m-%d %H:%M:%S"), "reference_proteins": ref_n,
+               "categories": [{"bit": b, "name": n, "class": cl} for b, n, cl in bits],
+               "last_scan": {"date": str(last[0]), "new_sequences": last[1], "flagged": last[2]} if last else None,
+               "items": items}, open(tmp, "w"), ensure_ascii=False)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, os.path.join(RESULT_DIR, "newest_pathogen.json"))
+
+
 def housekeeping(c):
     """Confirmation and result mails of full searches, expiry of unconfirmed requests, old result files,
     hourly cache of the newest human sequences."""
@@ -513,6 +554,10 @@ def housekeeping(c):
             write_newest(c)
         except Exception as e:                    # the cache is a convenience, never stop the worker for it
             log(f"newest cache failed: {e}")
+        try:
+            write_newest_pathogen(c)
+        except Exception as e:
+            log(f"pathogen cache failed: {e}")
         _newest_at = time.time()
     c.execute("UPDATE blast_job SET status='rejected', fertig=NOW(), error='not confirmed within %s hours' "
               "WHERE tier='full' AND status='unconfirmed' AND erstellt < NOW() - INTERVAL %s HOUR",

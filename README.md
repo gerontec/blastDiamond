@@ -210,6 +210,36 @@ names `neu_tage` and `von`/`bis` are still accepted as aliases of `new_days` and
 Because every nr sequence is already present locally, `?r=search` accepts an accession instead of a
 sequence: the residues are fetched from the local database, optionally a sub-range of them.
 
+## Pathogenicity flags for the sequences of every daily delivery
+
+Since 2026-11-10 every sequence that comes in with a daily NCBI delivery is checked for whether it is a known
+virulence factor or toxin. The check runs **once a day on the new sequences only** - that is what makes it cheap:
+154 315 sequences of one delivery took 3.7 s in total, DIAMOND itself 2 s.
+
+**The flag belongs to the protein, not to the organism.** The spike of SARS-CoV-2 is a virulence factor, its
+nucleocapsid is not, and both come from the same virus. An organism list cannot express that (and would be wrong
+in the other direction too: the Human Disease Ontology lists taxid 2, *Bacteria*, as a cause of human disease,
+which inherited down the lineage marks every bacterium).
+
+| piece | what it is |
+|---|---|
+| reference set | 12 481 manually curated Swiss-Prot proteins with the keyword Virulence (KW-0843) or Toxin (KW-0800), `build/vf_ref_build.py` into `blast_vf_ref`, as a 4.9 MB `vf.dmnd` |
+| the scan | `pipeline/pathogen_scan.py --day YYYY-MM-DD`: the new sequences are the query, the small reference database is the target; at least 50 % identity over at least 50 % of the sequence, e-value ≤ 1e-20 |
+| the flags | one bit mask `flags` per sequence in `blast_pathogen_hit`, `is_pathog = flags <> 0`, `is_toxic` = the bits whose class is `toxin` |
+| what the bits mean | `blast_flag_bit`, one row per category (46 at the moment: Toxin, Virulence, Neurotoxin, Ion channel impairing toxin, …). **The table extends itself**: a category that turns up in the source and has no bit yet gets the next free one, and bits already given out never change their value |
+| the measurement | `blast_pathogen_run`: one row per daily scan with its thresholds, how many sequences came in and how many were flagged |
+| in the form | the second table on <https://blast.heissa.de/newest.php>, and `api.php?r=newest_pathogen` |
+
+Only flagged sequences get a row: the 1.17 billion others cost nothing, and `blast_acc` (1.94 billion rows) is
+not touched by any of it.
+
+**What the flag is worth, and what it is not.** At 90 % identity and above it is practically the same protein as
+the curated one. Below that, the annotation is being transferred to a relative, which is a claim, not a
+measurement - that is why the identity is stored and shown with every hit. A conserved enzyme of a plant can
+reach 52 % identity to a bacterial virulence factor without being one. And "virulence" is the source's notion:
+Swiss-Prot also annotates housekeeping proteins that a pathogen needs for an infection (enolase, GroEL,
+glutamine synthetase), so they carry the flag as well.
+
 ## AmyloDeep on the Tesla P4
 
 `amyloid/` holds a GPU wrapper around AmyloDeep 0.3.1 (ESM-2 650M/150M, UniRep, SVM and XGBoost
