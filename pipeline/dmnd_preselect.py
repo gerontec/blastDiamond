@@ -7,7 +7,8 @@ Criteria (any combination, all must hold):
   --taxon 9606,4751    taxon including all sub-taxa (blast_taxon.parent), via blast_acc.idx_taxid;
                        a sequence matches if any of its accessions matches (like diamond --taxonlist)
   --len-min/--len-max  length window of the subject sequence (blast_seq.len)
-  --new-days 90        NCBI creation date (blast_seq_ncbi.createdate) within the last N days
+  --new-days 90        NCBI date (blast_seq_ncbi.ncbi_datum, date of the NCBI daily file the record came with)
+                       within the last N days. createdate is no longer filled since 2026-09-27.
 
   dmnd_preselect.py --new-days 90                    builds (or finds in the cache) the sub-.dmnd, prints JSON
   dmnd_preselect.py --taxon 9606 --len-min 100 --len-max 400 --max-seq 5000000
@@ -40,8 +41,12 @@ class TooLarge(Exception):
     pass
 
 
+class NoMatch(Exception):
+    """No sequence matches the criteria (makedb cannot build an empty database)."""
+
+
 def oids(c, taxon=None, len_min=None, len_max=None, new_days=None, max_seq=MAX_SEQ):
-    """Sorted OID list for the criteria, driven by the smallest set: creation date, else taxon, else
+    """Sorted OID list for the criteria, driven by the smallest set: NCBI date, else taxon, else
     length. Raises TooLarge as soon as max_seq is exceeded."""
     if not (taxon or len_min or len_max or new_days):
         raise ValueError("no criterion")
@@ -58,7 +63,7 @@ def oids(c, taxon=None, len_min=None, len_max=None, new_days=None, max_seq=MAX_S
         log(f"taxa including sub-taxa: {c.fetchone()[0]}")
     if new_days:
         sql = "SELECT n.oid FROM blast_seq_ncbi n"
-        where.append("n.createdate >= CURDATE() - INTERVAL %s DAY")
+        where.append("n.ncbi_datum >= CURDATE() - INTERVAL %s DAY")
         args.append(int(new_days))
         if len_min or len_max:
             sql += " JOIN blast_seq s ON s.oid = n.oid"
@@ -118,6 +123,8 @@ def preselect(c, taxon=None, len_min=None, len_max=None, new_days=None, max_seq=
     selected = oids(c, taxon, len_min, len_max, new_days, max_seq)
     t1 = time.time()
     log(f"{len(selected)} OIDs from MariaDB in {t1 - t0:.1f} s")
+    if not selected:
+        raise NoMatch("no sequence matches the pre-selection")
     d = Dmnd(DMND)
     gp = gaps(c)
     fa = os.path.join(PDIR, key + ".fa.tmp")
@@ -148,7 +155,7 @@ def main():
     p.add_argument("--taxon", default="", help="TaxIDs, comma-separated, including sub-taxa")
     p.add_argument("--len-min", type=int)
     p.add_argument("--len-max", type=int)
-    p.add_argument("--new-days", type=int, help="NCBI creation date within the last N days")
+    p.add_argument("--new-days", type=int, help="NCBI date (daily file) within the last N days")
     p.add_argument("--max-seq", type=int, default=MAX_SEQ)
     a = p.parse_args()
     taxon = [int(x) for x in a.taxon.split(",") if x.strip()]
@@ -160,6 +167,9 @@ def main():
         except TooLarge as e:
             print(json.dumps({"too_large": str(e)}))
             return 2
+        except NoMatch as e:
+            print(json.dumps({"no_match": str(e)}))
+            return 3
     print(json.dumps(m))
     return 0
 

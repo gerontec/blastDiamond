@@ -3,12 +3,25 @@
 Holds a shared lock on /home/gh/.nr_dmnd.lock during a search so that diamond_append.py /
 nr_daily_delta.py never change the .dmnd in the middle of a search.
 
+Tiers (blast_job.tier), all in this one queue, strictly one job at a time:
+  key    API key holders (as before)
+  adhoc  query form: runs only if it fits the time budget (budget_s, default 300 s). The pre-selection runs
+         under a MariaDB statement time limit and a sequence cap; then the search time is predicted from the
+         calibration runs (blast_calib, diamond_calibrate.py) and earlier searches (blast_ram_log). If the
+         prediction does not fit the rest of the budget the job is 'rejected' instead of started; diamond itself
+         is killed when the budget is used up. Ad-hoc jobs are taken before waiting key/full jobs.
+  full   search of the whole nr by mail, one per day and address (enforced by api.php): waits as 'unconfirmed'
+         until the link in the confirmation mail is opened, then runs like a key job; the result is mailed.
+Results of adhoc/full jobs are also written as xlsx to RESULT_DIR (served by api.php ?r=jobxlsx).
+
 Memory planning: before every search the need is estimated as BASE + k * min(DB letters, b) (in billions of
 letters) and --block-size b is chosen so that it stays below min(RAM_MAX_GB, MemAvailable - RAM_RESERVE_GB).
 k (GB per billion letters) comes from blast_ram_log: the peak RSS of earlier searches with the same mode and
 sensitivity and a similar query size; without measurements the start values K_START apply. Every search runs
 under /usr/bin/time and adds its own peak RSS to blast_ram_log."""
-import os, sys, time, fcntl, tempfile, subprocess
+import os, sys, time, fcntl, tempfile, subprocess, signal, smtplib
+from email.message import EmailMessage
+from email.utils import formatdate
 import blast_db, pymysql
 import dmnd_preselect
 from dmnd_getseq import Dmnd
@@ -30,6 +43,21 @@ BLOCKS = (2.0, 1.0, 0.5, 0.25, 0.1)                # --block-size steps, largest
 K_START = {"fast": 1.5, "mid-sensitive": 3.0, "sensitive": 3.0, "more-sensitive": 5.0,
            "very-sensitive": 8.0, "ultra-sensitive": 12.0}
 FIELDS = "qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore staxids".split()
+
+# ad-hoc service (query form)
+ADHOC_SQL_S = int(E("ADHOC_SQL_S", "60"))           # MariaDB time limit for the pre-selection query
+ADHOC_SAFETY = float(E("ADHOC_SAFETY", "1.5"))      # prediction margin
+ADHOC_AVG_LEN = 250                                 # residues per sequence, to turn a letter cap into a sequence cap
+RESULT_DIR = E("RESULT_DIR", "/var/lib/blast_results")
+RESULT_KEEP_DAYS = 14
+CONFIRM_HOURS = 24
+SMTP_HOST = E("BLAST_SMTP_HOST", "")                # empty = no mail
+MAIL_FROM = E("BLAST_MAIL_FROM", "blast@localhost")
+PUBLIC_URL = E("BLAST_PUBLIC_URL", "http://localhost").rstrip("/")
+
+
+class Rejected(Exception):
+    """An ad-hoc job that would not fit its time budget: not run, status 'rejected'."""
 
 
 def log(msg):
@@ -70,10 +98,35 @@ def estimate_k(c, mode, sens, q_letters):
     return k * 1.2, "start value"
 
 
-def ram_plan(c, mode, sens, q_letters, db_letters):
-    """-> (block_size, estimate_gb, limit_gb, free_gb, source_of_k). Waits if nothing fits."""
+def search_rate(c, mode, sens):
+    """Seconds per (query letter x billion DB letters), the largest value measured for mode and sensitivity:
+    calibration runs (blast_calib, timeouts count as lower bounds) and earlier searches (blast_ram_log).
+    Only runs with q x L >= 0.01 G count, below that diamond's start-up time dominates. None = no data."""
+    c.execute("SELECT MAX(r) FROM ("
+              " SELECT (seconds - 1) / (query_letters * db_letters / 1e9) AS r FROM blast_calib"
+              "  WHERE kind = 'search' AND mode = %s AND sensitivity = %s AND query_letters * db_letters >= 1e7"
+              "  AND (ok = 1 OR note LIKE 'timeout%%')"
+              " UNION ALL SELECT (seconds - 1) / (query_letters * db_letters / 1e9) FROM blast_ram_log"
+              "  WHERE ok = 1 AND mode = %s AND sensitivity = %s AND query_letters * db_letters >= 1e7) x",
+              (mode, sens, mode, sens))
+    r = c.fetchone()[0]
+    return float(r) if r is not None else None
+
+
+def predict_seconds(c, mode, sens, q_letters, db_letters):
+    """Predicted diamond wall time (with ADHOC_SAFETY margin), None without measurements."""
+    rate = search_rate(c, mode, sens)
+    if rate is None:
+        return None
+    return round((1 + max(rate, 0) * q_letters * db_letters / 1e9) * ADHOC_SAFETY, 1)
+
+
+def ram_plan(c, mode, sens, q_letters, db_letters, wait_min=None):
+    """-> (block_size, estimate_gb, limit_gb, free_gb, source_of_k). Waits if nothing fits
+    (at most wait_min minutes, default RAM_WAIT_MIN)."""
     k, source = estimate_k(c, mode, sens, q_letters)
     t0 = time.time()
+    wait_min = RAM_WAIT_MIN if wait_min is None else wait_min
     while True:
         free = mem_available_gb()
         limit = min(RAM_MAX_GB, free - RAM_RESERVE_GB)
@@ -83,7 +136,7 @@ def ram_plan(c, mode, sens, q_letters, db_letters):
                 return b, round(need, 2), round(limit, 2), round(free, 2), source
             if db_letters / 1e9 <= b / 2:          # the DB already fits the next smaller block: smaller won't help
                 break
-        if time.time() - t0 > RAM_WAIT_MIN * 60:
+        if time.time() - t0 >= wait_min * 60:
             raise RuntimeError(f"not enough memory: need {need:.1f} GB at --block-size {b}, "
                                f"free {free:.1f} GB, limit {limit:.1f} GB")
         log(f"memory tight (free {free:.1f} GB, need from {need:.1f} GB), waiting")
@@ -104,13 +157,13 @@ def add_staxids(c, rows):
 
 
 def post_filter(c, rows, len_min, len_max, new_days):
-    """Only for the full-search fallback: check length and creation date after the search."""
+    """Only for the full-search fallback: check length and NCBI date after the search."""
     if not (len_min or len_max or new_days):
         return rows
     ok = set()
     for i in range(0, len(rows), 500):
         part = sorted({r[3] for r in rows[i:i + 500]})
-        c.execute("SELECT a.acc, s.len, n.createdate >= CURDATE() - INTERVAL %s DAY FROM blast_acc a "
+        c.execute("SELECT a.acc, s.len, n.ncbi_datum >= CURDATE() - INTERVAL %s DAY FROM blast_acc a "
                   "JOIN blast_seq s ON s.oid = a.oid LEFT JOIN blast_seq_ncbi n ON n.oid = a.oid "
                   "WHERE a.acc IN (" + ",".join(["%s"] * len(part)) + ")", [int(new_days or 0), *part])
         for acc, ln, is_new in c.fetchall():
@@ -119,8 +172,23 @@ def post_filter(c, rows, len_min, len_max, new_days):
     return [(r[0], n, *r[2:]) for n, r in enumerate(x for x in rows if x[3] in ok)]
 
 
+def run_limited(cmd, timeout):
+    """subprocess.run with a timeout that kills the whole process group (diamond runs under /usr/bin/time:
+    killing only the direct child would leave diamond running)."""
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+    try:
+        out, err = p.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        os.killpg(p.pid, signal.SIGKILL)
+        p.communicate()
+        raise
+    return subprocess.CompletedProcess(cmd, p.returncode, out, err)
+
+
 def run_job(c, job):
-    job_id, mode, sens, evalue, max_t, taxonlist, query, len_min, len_max, new_days, q_letters = job
+    job_id, mode, sens, evalue, max_t, taxonlist, query, len_min, len_max, new_days, q_letters, tier, budget = job
+    adhoc = tier == "adhoc"
+    budget = budget or 300
     os.makedirs(TMP, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=TMP) as d:
         q, o = os.path.join(d, "q.fa"), os.path.join(d, "out.tsv")
@@ -135,29 +203,83 @@ def run_job(c, job):
             c.execute("SELECT release_id, dmnd_hash FROM blast_release WHERE quelle='nr' AND aktiv=1 "
                       "ORDER BY nr_datum DESC LIMIT 1")
             rel, dhash = c.fetchone()
+            if adhoc and not (taxonlist or len_min or len_max or new_days):
+                raise Rejected("a search of the whole nr cannot run ad hoc; restrict organism or length, "
+                               "or request a full search by mail")
             if taxonlist or len_min or len_max or new_days:
                 taxa = [int(x) for x in (taxonlist or "").split(",") if x]
+                ps_kw = {}
+                if adhoc:   # cap the pre-selection at what the time budget could search at all
+                    rate = search_rate(c, mode, sens)
+                    if rate is None:
+                        raise Rejected(f"no timing measurements for {mode} {sens} yet, so the search time "
+                                       "cannot be predicted")
+                    max_letters = (budget - 1) / ADHOC_SAFETY / max(rate, 1e-9) / q_letters * 1e9
+                    ps_kw["max_seq"] = max(1000, min(dmnd_preselect.MAX_SEQ, int(max_letters / ADHOC_AVG_LEN)))
+                    c.execute("SET SESSION max_statement_time = %s", (ADHOC_SQL_S,))
                 try:
-                    m = dmnd_preselect.preselect(c, taxa, len_min, len_max, new_days, threads=THREADS)
+                    m = dmnd_preselect.preselect(c, taxa, len_min, len_max, new_days, threads=THREADS, **ps_kw)
                     cmd.remove("staxids")                  # sub-.dmnd without taxonomy, taxa come from blast_acc
                     cmd += ["--db", m["dmnd"], "--dbsize", str(m["dbsize"])]   # E-values as in a full search
                     pre = (f"{m['n_seq']} sequences, {m['letters']} letters, {m['seconds']} s"
                            + (" (cache)" if m["cache"] else ""))
                     db_letters = m["letters"]
                 except dmnd_preselect.TooLarge as e:
+                    if adhoc:
+                        raise Rejected(f"the pre-selection is too large for a search within {budget} s ({e}); "
+                                       "narrow organism or length, or request a full search by mail")
                     cmd += ["--db", DMND] + (["--taxonlist", taxonlist] if taxonlist else [])
                     pre, fallback = f"full search, pre-selection {e}", True
+                except pymysql.err.OperationalError as e:
+                    if adhoc and e.args and e.args[0] == 1969:      # max_statement_time exceeded
+                        raise Rejected(f"the pre-selection took longer than {ADHOC_SQL_S} s; choose a smaller "
+                                       "organism group or add a length window")
+                    raise
+                except dmnd_preselect.NoMatch as e:      # nothing to search: done with 0 hits
+                    c.execute("UPDATE blast_job SET status='done', fertig=NOW(), sekunden=%s, release_id=%s, "
+                              "dmnd_hash=%s, n_hits=0, preselect=%s WHERE job_id=%s",
+                              (round(time.time() - t0, 1), rel, dhash, str(e), job_id))
+                    log(f"{job_id}: {e}")
+                    return
+                finally:
+                    if adhoc:
+                        try:
+                            c.execute("SET SESSION max_statement_time = 0")
+                        except pymysql.MySQLError:
+                            c.connection.ping(reconnect=True)
             else:
                 cmd += ["--db", DMND]
             if db_letters is None:
                 db_letters = Dmnd(DMND).letters
-            b, est, limit, free, source = ram_plan(c, mode, sens, q_letters, db_letters)
+            try:
+                b, est, limit, free, source = ram_plan(c, mode, sens, q_letters, db_letters,
+                                                       wait_min=0 if adhoc else None)
+            except RuntimeError as e:
+                if adhoc:
+                    raise Rejected(f"the server is busy ({e}); please try again later")
+                raise
             log(f"{job_id}: memory free {free} GB, limit {limit} GB, estimate {est} GB ({source}), "
                 f"--block-size {b}")
+            pred = predict_seconds(c, mode, sens, q_letters, db_letters)
+            c.execute("UPDATE blast_job SET est_seconds=%s, preselect=%s WHERE job_id=%s", (pred, pre, job_id))
+            timeout = TIMEOUT
+            if adhoc:
+                elapsed = time.time() - t0
+                if pred is None:
+                    raise Rejected(f"no timing measurements for {mode} {sens} yet")
+                if elapsed + pred > budget:
+                    raise Rejected(f"predicted search time {pred:.0f} s (plus {elapsed:.0f} s pre-selection) exceeds "
+                                   f"the limit of {budget} s; narrow organism or length, use a lower sensitivity, "
+                                   "or request a full search by mail")
+                timeout = max(5, budget - elapsed)
+                log(f"{job_id}: ad hoc, predicted {pred} s, {elapsed:.0f} s used, timeout {timeout:.0f} s")
             tf = os.path.join(d, "rss.txt")
             t_diamond = time.time()
-            r = subprocess.run(["/usr/bin/time", "-f", "%M", "-o", tf, *cmd, "--block-size", str(b)],
-                               capture_output=True, text=True, timeout=TIMEOUT)
+            try:
+                r = run_limited(["/usr/bin/time", "-f", "%M", "-o", tf, *cmd, "--block-size", str(b)], timeout)
+            except subprocess.TimeoutExpired:
+                raise RuntimeError(f"stopped after {timeout:.0f} s" + (f": time budget of {budget} s used up "
+                                                                       "(the prediction was too low)" if adhoc else ""))
         secs = round(time.time() - t0, 1)
         try:
             ram = round(int(open(tf).read().split()[-1]) / 1048576, 2)
@@ -192,10 +314,151 @@ def run_job(c, job):
     log(f"{job_id}: {len(rows)} hits in {secs}s")
 
 
+# ------------------------------------------------------------- results of form jobs (xlsx) and mail
+
+def taxon_names(c, taxids):
+    taxids = sorted({int(t) for t in taxids if str(t).isdigit()})
+    names = {}
+    for i in range(0, len(taxids), 500):
+        part = taxids[i:i + 500]
+        c.execute("SELECT taxid, name FROM blast_taxon WHERE taxid IN (" + ",".join(["%s"] * len(part)) + ")", part)
+        names.update(c.fetchall())
+    return names
+
+
+def write_xlsx(c, job_id):
+    """Hits of a form job as xlsx (opens on any Windows PC): sheets 'info' and 'hits'."""
+    from openpyxl import Workbook
+    c.execute("SELECT j.tier, j.mode, j.sensitivity, j.evalue, j.max_target_seqs, j.taxonlist, j.len_min, j.len_max, "
+              "j.new_days, j.n_query, j.query_letters, j.erstellt, j.sekunden, j.n_hits, j.preselect, j.dmnd_hash, "
+              "r.nr_datum FROM blast_job j LEFT JOIN blast_release r ON r.release_id = j.release_id WHERE j.job_id=%s",
+              (job_id,))
+    (tier, mode, sens, evalue, max_t, taxonlist, lmin, lmax, new_days, n_query, q_letters, created, secs, n_hits,
+     pre, dhash, nr_date) = c.fetchone()
+    c.execute("SELECT h.qseqid, h.sseqid, s.title, h.staxids, h.pident, h.length, h.mismatch, h.gapopen, h.qstart, "
+              "h.qend, h.sstart, h.send, h.evalue, h.bitscore FROM blast_job_hit h "
+              "LEFT JOIN blast_acc a ON a.acc = h.sseqid LEFT JOIN blast_seq s ON s.oid = a.oid "
+              "WHERE h.job_id=%s ORDER BY h.n", (job_id,))
+    hits = c.fetchall()
+    names = taxon_names(c, [t for h in hits for t in (h[3] or "").split(";")] + (taxonlist or "").split(","))
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet("info")
+    for k, v in [("job", job_id), ("created", str(created)), ("program", f"DIAMOND {mode}, {sens}"),
+                 ("e-value", evalue), ("max. hits per query", max_t),
+                 ("organism filter", ", ".join(f"{names.get(int(t), t)} ({t})" for t in (taxonlist or "").split(",") if t)
+                  or "none"),
+                 ("length filter", f"{lmin or ''}..{lmax or ''}" if (lmin or lmax) else "none"),
+                 ("new within days", new_days or "none"), ("queries", n_query), ("query letters", q_letters),
+                 ("database", f"NCBI nr as of {nr_date}, DIAMOND file {dhash}"), ("pre-selection", pre or "none"),
+                 ("search seconds", float(secs or 0)), ("hits", n_hits),
+                 ("source", f"{PUBLIC_URL}/  ·  https://github.com/gerontec/blastDiamond")]:
+        ws.append([k, v])
+    ws = wb.create_sheet("hits")
+    ws.append(["query", "subject", "title", "organisms", "identity %", "alignment length", "mismatches", "gap openings",
+               "query start", "query end", "subject start", "subject end", "e-value", "bit score", "taxids"])
+    for h in hits:
+        org = "; ".join(names.get(int(t), t) for t in (h[3] or "").split(";") if t.isdigit())
+        ws.append([h[0], h[1], (h[2] or "")[:32000], org, float(h[4]), int(h[5]), int(h[6]), int(h[7]), int(h[8]),
+                   int(h[9]), int(h[10]), int(h[11]), float(h[12]), float(h[13]), h[3]])
+    os.makedirs(RESULT_DIR, exist_ok=True)
+    tmp = os.path.join(RESULT_DIR, job_id + ".xlsx.part")
+    wb.save(tmp)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, os.path.join(RESULT_DIR, job_id + ".xlsx"))
+
+
+def send_mail(to, subject, body):
+    msg = EmailMessage()
+    msg["From"], msg["To"], msg["Subject"], msg["Date"] = MAIL_FROM, to, subject, formatdate(localtime=True)
+    msg.set_content(body + f"\n-- \n{PUBLIC_URL}/  (source: https://github.com/gerontec/blastDiamond)\n")
+    with smtplib.SMTP(SMTP_HOST, 25, timeout=30) as s:
+        s.send_message(msg)
+
+
+NEWEST_TAXID, NEWEST_N = 9606, 30
+_newest_at = 0
+
+
+def write_newest(c):
+    """Cache file for the form: the NEWEST_N sequences of Homo sapiens most recently added to nr (highest OIDs;
+    daily deltas are appended at the end), with title, length and NCBI date. Rewritten every hour."""
+    import json
+    c.execute("SELECT oid, acc FROM blast_acc WHERE taxid = %s ORDER BY oid DESC LIMIT %s", (NEWEST_TAXID, NEWEST_N))
+    accs = dict(c.fetchall())
+    items = []
+    if accs:
+        c.execute("SELECT oid, len, title, quelle, datei, hinzugefuegt, ncbi_datum FROM blast_seq_herkunft "
+                  "WHERE oid IN (" + ",".join(["%s"] * len(accs)) + ") ORDER BY oid DESC", list(accs))
+        for oid, ln, title, src, file, added, ncbi_date in c.fetchall():
+            items.append({"acc": accs[oid], "oid": oid, "length": ln, "title": title, "source": src, "file": file,
+                          "added": str(added) if added else None, "ncbi_date": str(ncbi_date) if ncbi_date else None})
+    os.makedirs(RESULT_DIR, exist_ok=True)
+    tmp = os.path.join(RESULT_DIR, ".newest_human.json.part")
+    json.dump({"taxid": NEWEST_TAXID, "organism": "Homo sapiens", "updated": time.strftime("%Y-%m-%d %H:%M:%S"),
+               "items": items}, open(tmp, "w"), ensure_ascii=False)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, os.path.join(RESULT_DIR, "newest_human.json"))
+
+
+def housekeeping(c):
+    """Confirmation and result mails of full searches, expiry of unconfirmed requests, old result files,
+    hourly cache of the newest human sequences."""
+    global _newest_at
+    if time.time() - _newest_at > 3600:
+        try:
+            write_newest(c)
+        except Exception as e:                    # the cache is a convenience, never stop the worker for it
+            log(f"newest cache failed: {e}")
+        _newest_at = time.time()
+    c.execute("UPDATE blast_job SET status='rejected', fertig=NOW(), error='not confirmed within %s hours' "
+              "WHERE tier='full' AND status='unconfirmed' AND erstellt < NOW() - INTERVAL %s HOUR",
+              (CONFIRM_HOURS, CONFIRM_HOURS))
+    if SMTP_HOST:
+        c.execute("SELECT job_id, email, confirm_token, query_letters, n_query FROM blast_job "
+                  "WHERE tier='full' AND status='unconfirmed' AND confirm_mailed IS NULL")
+        for jid, email, token, letters, n in c.fetchall():
+            link = f"{PUBLIC_URL}/?confirm={jid}&token={token}"
+            try:
+                send_mail(email, "Confirm your full DIAMOND search / Vollsuche bestätigen",
+                          f"Please open this link within {CONFIRM_HOURS} hours to start the search of the whole NCBI nr "
+                          f"({n} sequence(s), {letters} letters):\n\n  {link}\n\n"
+                          f"Bitte öffnen Sie den Link innerhalb von {CONFIRM_HOURS} Stunden, um die Suche über die "
+                          f"gesamte NCBI nr zu starten.\n\nIf you did not ask for this, ignore this mail. / "
+                          "Falls Sie das nicht angefordert haben, ignorieren Sie diese Mail.\n")
+                c.execute("UPDATE blast_job SET confirm_mailed=NOW() WHERE job_id=%s", (jid,))
+                log(f"{jid}: confirmation mail sent")
+            except (OSError, smtplib.SMTPException) as e:
+                log(f"{jid}: confirmation mail failed: {e}")
+        c.execute("SELECT job_id, email, status, n_hits, sekunden, error FROM blast_job WHERE tier='full' "
+                  "AND status IN ('done','failed') AND result_mailed IS NULL AND email IS NOT NULL")
+        for jid, email, status, n_hits, secs, err in c.fetchall():
+            if status == "done":
+                body = (f"Your full DIAMOND search is finished: {n_hits} hits in {float(secs or 0) / 60:.0f} min.\n"
+                        f"Ihre Vollsuche ist fertig: {n_hits} Treffer.\n\n"
+                        f"Excel file / Excel-Datei (kept {RESULT_KEEP_DAYS} days):\n  {PUBLIC_URL}/api.php?r=jobxlsx&id={jid}\n\n"
+                        f"Results in the browser / im Browser:\n  {PUBLIC_URL}/?job={jid}\n")
+                subject = f"DIAMOND full search done: {n_hits} hits"
+            else:
+                body = f"Your full DIAMOND search failed / Ihre Vollsuche ist fehlgeschlagen:\n\n  {err}\n"
+                subject = "DIAMOND full search failed"
+            try:
+                send_mail(email, subject, body)
+                c.execute("UPDATE blast_job SET result_mailed=NOW() WHERE job_id=%s", (jid,))
+                log(f"{jid}: result mail sent")
+            except (OSError, smtplib.SMTPException) as e:
+                log(f"{jid}: result mail failed: {e}")
+    if os.path.isdir(RESULT_DIR):
+        limit = time.time() - RESULT_KEEP_DAYS * 86400
+        for f in os.listdir(RESULT_DIR):
+            p = os.path.join(RESULT_DIR, f)
+            if f.endswith(".xlsx") and os.path.getmtime(p) < limit:
+                os.remove(p)
+
+
 def main():
     c = db().cursor()
     c.execute("UPDATE blast_job SET status='queued', gestartet=NULL WHERE status='running'")  # after a crash
-    last_clean = last_ram = 0
+    last_clean = last_ram = last_house = 0
     while True:
         try:
             c.connection.ping(reconnect=True)
@@ -205,21 +468,34 @@ def main():
             if time.time() - last_clean > 600:
                 c.execute("DELETE FROM blast_api_hits WHERE minute < %s", (int(time.time() // 60) - 10,))
                 last_clean = time.time()
+            if time.time() - last_house > 10:
+                housekeeping(c)
+                last_house = time.time()
             c.execute("SELECT dmnd_hash FROM blast_release WHERE quelle='nr' AND aktiv=1 ORDER BY nr_datum DESC LIMIT 1")
             row = c.fetchone()
             if not row or row[0] is None:
                 time.sleep(60)
                 continue
+            # one job at a time; ad-hoc jobs (query form, short by construction) before waiting key/full jobs
             c.execute("SELECT job_id, mode, sensitivity, evalue, max_target_seqs, taxonlist, query, "
-                      "len_min, len_max, new_days, query_letters FROM blast_job WHERE status='queued' ORDER BY erstellt LIMIT 1")
+                      "len_min, len_max, new_days, query_letters, tier, budget_s FROM blast_job WHERE status='queued' "
+                      "ORDER BY tier = 'adhoc' DESC, erstellt LIMIT 1")
             job = c.fetchone()
             if not job:
-                time.sleep(5)
+                time.sleep(2)
                 continue
             c.execute("UPDATE blast_job SET status='running', gestartet=NOW() WHERE job_id=%s AND status='queued'", (job[0],))
-            log(f"{job[0]}: {job[1]} {job[2]} taxonlist={job[5]}")
+            log(f"{job[0]}: {job[11]} {job[1]} {job[2]} taxonlist={job[5]}")
+            t_job = time.time()
             try:
                 run_job(c, job)
+                if job[11] in ("adhoc", "full"):
+                    write_xlsx(c, job[0])
+            except Rejected as e:
+                c.connection.ping(reconnect=True)
+                c.execute("UPDATE blast_job SET status='rejected', fertig=NOW(), sekunden=%s, error=%s WHERE job_id=%s",
+                          (round(time.time() - t_job, 1), str(e)[:2000], job[0]))
+                log(f"{job[0]}: rejected: {e}")
             except Exception as e:
                 try:
                     c.connection.rollback()

@@ -1,0 +1,10 @@
+/* additions to Bootstrap for the DIAMOND query form */
+th.sort { cursor: pointer; user-select: none; white-space: nowrap; }
+th.sort::after { content: " ↕"; color: var(--bs-secondary-color); font-weight: normal; }
+th.sort[data-dir="asc"]::after { content: " ↑"; color: inherit; }
+th.sort[data-dir="desc"]::after { content: " ↓"; color: inherit; }
+.table td, .table th { font-size: .88rem; }
+.btn-close-sm { width: .5em; height: .5em; padding: .1em; vertical-align: middle; }
+details > summary { cursor: pointer; }
+[hidden] { display: none !important; }
+#seq { min-height: 8rem; }
