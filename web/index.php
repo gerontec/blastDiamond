@@ -214,6 +214,6 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data:; style
     <span><?= h($T['data']) ?></span>
   </div>
 </footer>
-<script src="assets/app.js"></script>
+<script src="assets/app.js?v=<?= (int)@filemtime(__DIR__ . '/assets/app.js') ?>"></script>
 </body>
 </html>

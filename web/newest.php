@@ -77,6 +77,6 @@ header("Content-Security-Policy: default-src 'self'; style-src 'self'; script-sr
   <p class="mt-4 small"><a href="?lang=<?= $lang ?>&amp;list=pathogen"><?= h($T['to_pathogen']) ?></a></p>
 <?php endif; ?>
 </main>
-<script src="assets/newest.js"></script>
+<script src="assets/newest.js?v=<?= (int)@filemtime(__DIR__ . '/assets/newest.js') ?>"></script>
 </body>
 </html>
