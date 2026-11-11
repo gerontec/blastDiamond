@@ -374,6 +374,13 @@ def check_diamond():
         raise RuntimeError(f"diamond {DIAMOND} has no --append (unpatched build?)")
 
 
+def save_state(state, state_file):
+    """Write the state atomically (tmp + rename), so a failing dump never leaves a truncated file."""
+    with open(state_file + ".tmp", "w") as f:
+        json.dump(state, f)
+    os.replace(state_file + ".tmp", state_file)
+
+
 def append_to_parts(c, per_file, state, state_file):
     """Distribute the new records (in OID order over all delta files) to the parts by taxon group and append them
     there. The OIDs continue at the end of the whole nr (blast_release dmnd_sequenzen = MAX(last_oid) + 1 in
@@ -390,10 +397,10 @@ def append_to_parts(c, per_file, state, state_file):
     if "nr_before" not in state:                  # size before this run; the DB keeps it until the metadata commit
         _, n, l, _ = nr_parts.nr_size(c)
         state["nr_before"] = {"n_seq": n, "letters": l}
-        json.dump(state, open(state_file, "w"))
+        save_state(state, state_file)
     before = state["nr_before"]
     c.execute(f"SELECT COALESCE(MAX(last_oid), -1) + 1 FROM {PREFIX}import")
-    oid0 = c.fetchone()[0]
+    oid0 = int(c.fetchone()[0])                   # MariaDB returns MAX()+1 as Decimal, not JSON serializable
     if oid0 != int(before["n_seq"]):
         raise RuntimeError(f"OID end {oid0} in {PREFIX}import != size of the whole nr {before['n_seq']} (blast_release)")
     table = group_table_from_parent(nodes_parent(f"{TAXDIR}/nodes.dmp"))   # just refreshed; blast_taxon lags a day
@@ -456,14 +463,14 @@ def append_to_parts(c, per_file, state, state_file):
         c.execute(f"UPDATE {PREFIX}part SET n_seq=%s, n_acc=n_acc+%s, letters=%s, built=NOW() WHERE part=%s",
                   (d.n_seq, len(new), d.letters, p))
         done[p] = len(new)
-        json.dump(state, open(state_file, "w"))
+        save_state(state, state_file)
 
     # size and identifier of the whole nr; written to blast_release in the metadata transaction
     state["dmnd_letters"] = int(before["letters"]) + sum(s["letters"] for s in per_file)
     state["dmnd_hash"] = nr_parts.combined_hash(c)
     state["dmnd_sequences"] = oid0 + j
     state["dmnd_done"] = True
-    json.dump(state, open(state_file, "w"))
+    save_state(state, state_file)
 
 
 def main():
@@ -526,6 +533,15 @@ def main():
     state_file = os.path.join(WORK, "state.json")
     state = json.load(open(state_file)) if os.path.exists(state_file) else {}
     key = "|".join(f"{q}:{n}:{d}" for q, _, n, d in pending)
+    if state.get("key", key) != key and state.get("parts_new"):
+        # the parts already hold the sequences of the unfinished run (append done, metadata commit missing):
+        # finish exactly that run first; files that appeared in the meantime wait for the next invocation
+        old_key = state["key"].split("|")
+        pending = [x for x in pending if f"{x[0]}:{x[2]}:{x[3]}" in old_key]
+        key = "|".join(f"{q}:{n}:{d}" for q, _, n, d in pending)
+        if key != state["key"]:
+            raise RuntimeError(f"unfinished run {state['key']} does not match the pending files {key}")
+        log(f"unfinished run with appended parts: finishing its {len(pending)} files first")
     if state.get("key", key) != key:
         state = alter_lauf_abschliessen(state, done_db)
     state["key"] = key
@@ -614,7 +630,7 @@ def main():
     c.connection.autocommit(False)
     c.connection.begin()
     c.execute(f"SELECT COALESCE(MAX(last_oid), -1) + 1, COALESCE(MAX(chunk_no), -1) + 1 FROM {PREFIX}import")
-    oid, chunk_no = c.fetchone()
+    oid, chunk_no = map(int, c.fetchone())   # MariaDB returns MAX()+1 as Decimal
     new_seq_h, new_acc_h = [], []
     for s in per_file:
         c.execute(f"INSERT INTO {PREFIX}release (quelle, datei, nr_datum, nr_sequenzen, nr_residues, dmnd_datei, "
