@@ -1,19 +1,63 @@
 # Clustering nr: one representative per family of similar proteins
 
-Status: concept, 2026-11-15, updated 2026-11-16. Stage 1 (90 %) measured on `p1_mammalia`; stage 2 (50 %) measured up to its last round, which runs out of memory (see *Test run*, *DIAMOND round 4 in the source*); nothing is in production.
+Status 2026-11-16: in production are **daily clusters of the sequences each nr update adds** (MMseqs2, CPU;
+see *Production*). Clustering all of nr was tested on `p1_mammalia` with DIAMOND, MMseqs2 and an own GPU proof of
+concept and not pursued; those measurements are kept below as findings.
 
-## Goal
+## Production: daily clusters of the new sequences (since 2026-11-16)
 
-nr holds 1.15 billion distinct sequences, but many of them are near copies: the same protein from 500
-strains of one bacterium, point variants, fragments. A search returns hundreds of hits that say the same,
-and every search scans all of them. Clustering keeps **one real sequence per group (the representative)** and
-a table member -> representative, as UniProt does for UniRef90/UniRef50.
+`pipeline/nr_cluster_daily.py` (deployed as `~/python/nr_cluster_daily.py`, cron `30 5 * * *` with nice, log
+`~/python/nr_cluster_daily.log`) clusters the sequences each daily update added, **among themselves**; they are not
+compared with the rest of nr.
 
-- shorter hit lists: one hit per family, expanded on demand
-- searches against the representatives only: smaller database, estimated 5-10x faster (not measured yet)
-- a stable family key for joins (ChEMBL target -> its family in nr -> organisms)
+- An update is identified by its OID end (`blast_release.dmnd_sequenzen` after `nr_daily_delta.py`); its new
+  OIDs are [previous end, end). In each part they are the tail of `<part>.oids.npy`; the residues are read from the
+  part's .dmnd (`dmnd_getseq.Dmnd.satz`) under a shared lock on `~/.nr_dmnd.lock` (the delta appends under the
+  exclusive lock), written as FASTA with the OID as header.
+- MMseqs2 (`~/src/MMseqs2/build/src/mmseqs`, d401e78, CPU), per part: `cluster --min-seq-id 0.9` over all new
+  records, `createsubdb` of the representatives, `cluster --min-seq-id 0.5` over those, both with `-c 0.8
+  --cov-mode 1 --max-seqs 20 --threads 16`; so every sequence has a 90 % and a 50 % representative and the two
+  levels form a tree. Short sequences are kept.
+- The first run took only the newest update; every later run takes all updates after the last processed one, so a
+  missed day is caught up.
 
-## Why a hash does not help
+Tables (schema wagodb):
+
+| table | content |
+|---|---|
+| `blast_cluster (oid, part, rep90_oid, rep50_oid, delta_end)`, PK `(oid, part)`, keys on both representatives and `delta_end` | one row per new sequence; a representative points to itself |
+| `blast_cluster_rep (rep_oid, part, level, n_members, delta_end)`, PK `(rep_oid, part, level)` | one row per representative and level (90 / 50) |
+| `blast_cluster_run (delta_end, part, n_seq, n_rep90, n_rep50, seconds, mmseqs_version, finished)` | one row per update and part |
+
+First run, update of 2026-11-16 (OIDs 1 174 132 906-1 174 140 994, 16 s in total):
+
+| part | new sequences | clusters 90 % | clusters 50 % |
+|---|---|---|---|
+| p1_mammalia | 40 | 31 | 23 |
+| p2_eukaryota_other | 534 | 218 | 132 |
+| p3_viruses_archaea_other | 714 | 311 | 247 |
+| p4_pseudomonadota | 2 012 | 1 929 | 1 897 |
+| p5_bacillati | 4 788 | 3 296 | 3 110 |
+| p6_bacteria_other | 1 | 1 | 1 |
+
+The largest 50 % clusters of that day were marker genes sequenced for phylogenies and barcoding: elongation factor
+1-alpha (99 members), cytochrome c oxidase subunit I (84) and II (45). Daily updates add 8 000-84 000 sequences.
+
+Example query, the families of the newest update:
+
+    SELECT r.part, r.n_members, s.title FROM blast_cluster_rep r JOIN blast_seq s ON s.oid = r.rep_oid
+    WHERE r.level = 50 AND r.delta_end = (SELECT MAX(delta_end) FROM blast_cluster_run) ORDER BY r.n_members DESC;
+
+## Full clustering of nr (tested on p1_mammalia, not pursued)
+
+The idea tested first: cluster all of nr once (1.17 billion sequences) and keep **one real sequence per group
+(the representative)** with a table member -> representative, as UniProt does for UniRef90/UniRef50, for shorter
+hit lists (one hit per family, expanded on demand), searches against the representatives only and a stable
+family key for joins (ChEMBL target -> its family in nr -> organisms). Measured on p1_mammalia below; with
+MMseqs2 the whole nr would take an estimated 4-7 days of the 64 GB host, so it was not pursued: only the daily
+additions are clustered (see *Production*).
+
+### Why a hash does not help
 
 nr is already non-redundant: one OID = one exact sequence, identical sequences from different organisms are
 accessions of the same OID. Grouping the 64-bit hashes of `~/diamond/nr_seq_hashes.npy` (blake2b-64, state
@@ -21,9 +65,9 @@ accessions of the same OID. Grouping the 64-bit hashes of `~/diamond/nr_seq_hash
 22 GB). The expected number of 64-bit collisions at this size is about 0.04. Reduction needs *similar*, not
 identical sequences, so it needs alignment-based clustering.
 
-## Method
+### Method
 
-Greedy centroid clustering with DIAMOND 2.2.8 (installed on dell, `~/.local/bin/diamond`):
+Planned as greedy centroid clustering with DIAMOND 2.2.8 (installed on dell, `~/.local/bin/diamond`):
 
 | parameter | value | meaning |
 |---|---|---|
@@ -50,7 +94,7 @@ are diverse per species, 37 % of the sequences have no partner at 90 %). Bacteri
 species) should reduce more; not measured yet. At 50 % the first three rounds of `diamond cluster` reach
 **6.0x** on p1 (2.59 M representatives); the fourth (full sensitivity) did not finish, see *Test run*.
 
-## Per part, not over the whole nr
+### Per part, not over the whole nr
 
 Clustering runs on each of the six partial databases (doc/multidb_daily.md) separately:
 
@@ -65,41 +109,7 @@ Viruses stay in: no virus is the natural source of a small-molecule drug, but vi
 254 ChEMBL compounds with a curated mechanism (HIV protease, SARS-CoV-2 Mpro), and some drugs are viruses
 themselves (talimogene laherparepvec, AAV gene therapies).
 
-## Schema (MariaDB, schema of blast_seq)
-
-| table / column | content |
-|---|---|
-| `blast_cluster (oid, part, rep90_oid, rep50_oid, PRIMARY KEY (oid, part), KEY (rep90_oid), KEY (rep50_oid))` | membership; a representative points to itself |
-| `blast_cluster_rep (rep_oid, part, level, n_members, n_taxa)` | one row per representative and level, for sorting hits by family size |
-| `blast_part.rep90_dmnd`, `blast_part.rep50_dmnd` | paths of the representative databases |
-
-Size: ~1.16 billion rows x ~17 bytes plus two secondary indexes, estimated 40-60 GB. Loaded once per
-clustering with `LOAD DATA` from the DIAMOND TSV (two columns: representative, member, by accession; mapped to
-OIDs through the part's `oids.npy` / record numbers).
-
-## Search with representatives
-
-1. Search the query against `<part>.rep50.dmnd` (or rep90 for a finer view), `--dbsize` still the letters
-   of the whole nr, so e-values stay comparable with the current searches.
-2. Each hit is a family; the form shows the representative with `n_members` / `n_taxa`.
-3. "Expand": the members of the hit cluster (`blast_cluster WHERE rep50_oid = ?`) are built into a small
-   sub-.dmnd (as `dmnd_preselect.py` does) and the query is realigned against them: exact identity per
-   member, organisms from `blast_acc`.
-
-The full search over all members stays available; representatives are an additional, faster mode.
-
-## Daily delta
-
-New sequences from `nr_daily_delta.py` are not clustered from scratch every day:
-
-1. After `makedb --append`, search the new sequences of a part against its `rep90.dmnd`
-   (`--approx-id 90 --member-cover 80` equivalent filter on the blastp output).
-2. Hit: join that cluster (`rep90_oid`, and its `rep50_oid`). No hit: the sequence becomes a new rep90 (and
-   rep50) of its own and is appended to both representative databases.
-3. Monthly (or when a part grew by > 5 %): re-cluster the part fully, because greedy assignment day by day
-   drifts from what a full run would produce.
-
-## Test run
+### Test run
 
 `p1_mammalia` (15 527 067 sequences, 9.25 G letters on 2026-11-15):
 
@@ -107,7 +117,7 @@ New sequences from `nr_daily_delta.py` are not clustered from scratch every day:
       diamond linclust -d /home/gh/diamond/parts/p1_mammalia.dmnd -o c90.tsv \
         --approx-id 90 --member-cover 80 -M 30G -p 16 -t /mnt/archive/nr_cluster_test
 
-Output and log in `/mnt/archive/nr_cluster_test/`. To measure: wall time, peak memory (`/usr/bin/time -v`),
+Logs in `/mnt/archive/nr_cluster_test_keep` (the cluster files were deleted after the tests). To measure: wall time, peak memory (`/usr/bin/time -v`),
 number of clusters = reduction factor, cluster size distribution; then stage 2 (50 %) on the
 representatives. From these numbers the time and memory for p2-p6 are extrapolated before anything larger runs.
 
@@ -120,7 +130,7 @@ representatives. From these numbers the time and memory for p2-p6 are extrapolat
 | singletons | 5 696 727 (37 % of the sequences) | – |
 | output | `c90.tsv`, 429 MB, two columns (representative, member accession) | |
 
-Rounds of `diamond cluster --approx-id 50 --member-cover 80` (log `c50.log`, `c50_oom_M30G.log`):
+Rounds of `diamond cluster --approx-id 50 --member-cover 80` (logs `c50_oom_*.log`):
 
 | round | sensitivity | representatives after it |
 |---|---|---|
@@ -132,8 +142,7 @@ Rounds of `diamond cluster --approx-id 50 --member-cover 80` (log `c50.log`, `c5
 Three runs died at the same point at 36 GB: `-M 30G -p 16`, `-M 18G -p 16`, `-M 18G -p 8` (logs
 `c50_oom_*.log`). Neither the memory limit nor the thread count bounds the alignment phase of the non-linear
 round. All 2.59 M representatives (486 M letters) are one query block there (logged block size 2.55 GB,
-4 index chunks). Which sub-step of "Computing alignments" takes the memory is not measured yet (see *DIAMOND
-round 4 in the source*). Whatever runs clustering on dell must keep a systemd `MemoryMax` (here it protected
+4 index chunks). The sub-step that takes the memory was measured later (see *Cause, measured with v2.2.9*). Whatever runs clustering on dell must keep a systemd `MemoryMax` (here it protected
 the host: 47 GB stayed free) and must not rely on `-M` alone.
 
 Cluster sizes at 90 %:
@@ -157,7 +166,7 @@ Extrapolation (linear in letters, which linclust is designed for; to be checked 
 p1 has 9.25 G letters of 442 G in nr, so stage 1 over all parts would take roughly 48 x 24 min = ~19 h at
 the same thread count; memory stays within the limit because DIAMOND works in blocks.
 
-## DIAMOND round 4 in the source
+### DIAMOND round 4 in the source
 
 Read in `~/build/diamond-master-61bbbe491bed/src` (2.2.8 master 61bbbe49) and `~/build/diamond-2.2.9/src`
 (release v2.2.9, 2026-11-14):
@@ -177,7 +186,7 @@ Read in `~/build/diamond-master-61bbbe491bed/src` (2.2.8 master 61bbbe49) and `~
   pipeline whose option is commented out. The release notes add a `recover` workflow, but only for
   `--parallel-tmpdir`.
 
-### Cause, measured with v2.2.9 and `--log` (2026-11-16)
+#### Cause, measured with v2.2.9 and `--log` (2026-11-16)
 
 v2.2.9 with the default steps (`faster_lin`, `fast_lin`, `default`: three rounds since 2.2.9), `-M 18G -p 8`,
 `--log`, plus a sampler of the unit's cgroup (`c50_v229_oom_bins16.log`, `c50_v229_oom_bins16_mem.txt`):
@@ -198,11 +207,27 @@ Candidate patches:
 
 | patch | size | helps if |
 |---|---|---|
-| B: keep the query bins in `run_all_vs_all()`: `config.query_bins.set_if_blank(LINCLUST_QUERY_BINS)` instead of `unset()` (128 from the linear rounds, or `--bin`) | 1 line | **the measured cause**: bins 8x smaller, buffers accordingly; does not help if a few huge families fill one bin. Built on branch `query-bins-all-vs-all` of `~/build/diamond-2.2.9` (`build_bins/diamond`); test running |
+| B: keep the query bins in `run_all_vs_all()`: `config.query_bins.set_if_blank(LINCLUST_QUERY_BINS)` instead of `unset()` (128 from the linear rounds, or `--bin`) | 1 line | **the measured cause**: bins 8x smaller, buffers accordingly; does not help if a few huge families fill one bin. Built on branch `query-bins-all-vs-all` of `~/build/diamond-2.2.9` (`build_bins/diamond`), not pushed; result below |
 | A: limit targets per query in the all-vs-all round (option instead of `max_target_seqs_ = 0`) | 3-10 lines | fewer seed hits / extensions per query in large families (COI, antibodies, olfactory receptors); costs some edges in the greedy vertex cover, as MMseqs2's `--max-seqs` does |
 | C: split a bin larger than `max_bytes` when loading (or plan the bin count from the hit count) | 40-60 lines | the general fix: `-M` would then really bound this phase |
 
-## MMseqs2 as alternative
+Test of patch B (same setup, log `c50_v229_bins128_aborted.log`): the all-vs-all round ran with `Query bins =
+128`; bins were loaded in groups of 3-18 at 5.9-7.5 GB each (422-537 M trace points, `-M 18G` respected), RSS
+~20 GB, no OOM. About 2.5 GB per bin, so with 16 bins one bin would have been ~20 GB and the two buffers
+~40 GB, which matches the kill at 36 GB. Stopped by decision after ~45 min at bin 27 of 128: the extrapolated
+duration of the round alone was over 3 h (8 threads). The patch removes the OOM as far as it ran; it was not
+run to the end, so no PR has been proposed.
+
+Where the seed hits come from: 28 % of the 6.84 M representatives at 90 % (random sample of 100 000, titles from
+`blast_seq`) are immunoglobulin entries, 85 % of them "immunoglobulin heavy chain junction region" and 8 %
+"light chain junction region" of *Homo sapiens* (95 %), 12-25 aa (median 17): CDR3 peptides from immune
+repertoire sequencing, e.g. MBN4316372.1 `CARGGAVTAIHYFAMDVWY`, MCG02411.1 `CARALEPQNDAFDIWY`. All share the
+V-gene start (`CAR`/`CVR`) and the J-gene end (`...D.WY`), so at 50 % nearly every one seeds against nearly
+every other; ~1.9 M of them allow up to ~3.6e12 candidate pairs. Not measured: their share of the hits.
+Excluding sequences below ~30 aa before clustering would remove them (fragments, not representatives of a
+family).
+
+### MMseqs2 as alternative
 
 Built on dell from `~/src/MMseqs2` (commit d401e78, 2026-09-13): `build/src/mmseqs`, release, AVX2, 32-bit
 sequence IDs (`MMSEQS_INT64_IDS=0`, `src/commons/IndexTypes.h`; enough for 4.29 billion sequences per
@@ -218,10 +243,103 @@ would add ~29 %). From the source:
 - `data/workflow/cascaded_clustering.sh`: every step checks whether its result exists (`notExists`), so a
   killed run resumes at the failed step instead of starting again.
 
-MMseqs2 bounds the targets per query (`--max-seqs`) where DIAMOND's all-vs-all round does not. The comparison
-on p1 (same thresholds: `--min-seq-id 0.5 -c 0.8 --cov-mode 1 --split-memory-limit 30G`, input FASTA from
-`diamond getseq`, database `p1db` in `/mnt/archive/nr_cluster_test/mmseqs/`) is still to be run. The
-sequences of the parts are SEG-masked (X), for both tools alike.
+MMseqs2 bounds the targets per query (`--max-seqs`) where DIAMOND's all-vs-all round does not.
+
+How `cluster` works in the source, without matrix algebra: linclust picks m k-mers per sequence (21, reduced
+alphabet of 13 letters), sorts all (k-mer, sequence) pairs and makes the longest sequence of each k-mer group
+the centre, so each member gets one edge, not one per pair; the cascade steps then run a k-mer prefilter
+(similar k-mers from the substitution matrix, two hits on one diagonal, ungapped diagonal score, best
+`--max-seqs` 20 per query), striped SIMD Smith-Waterman on those candidates and a greedy clustering of the sparse
+graph (`greedyIncrementalLowMem`: an unassigned sequence becomes a representative and takes its unassigned
+neighbours). "Matrix" means only the substitution matrix (20 x 20 / 13 x 13 lookup) and the per-pair DP table;
+no N x N similarity matrix exists.
+
+#### Comparison on p1_mammalia, 2026-11-16
+
+`mmseqs cluster p1db p1clu50 tmp50 --min-seq-id 0.5 -c 0.8 --cov-mode 1 --max-seqs 20 --threads 16
+--split-memory-limit 28G` under systemd `MemoryMax=36G`, nice 10; input FASTA from `diamond getseq`
+(`createdb`: 13 min, 15 527 107 entries: the 40 more than on 2026-11-15 are the daily append of 2026-11-16).
+Log `clu50.log` in `/mnt/archive/nr_cluster_test_keep`; the result was deleted after the tests.
+
+| stage | time | representatives after it | reduction |
+|---|---|---|---|
+| linclust (redundancy pass) | ~19 min | 2 074 545 | 7.5x |
+| cascade step 1 (`-s 1`): prefilter 1.4 min, align 18.9 min | ~20 min | 1 841 921 | 8.4x |
+| cascade step 2 (`-s 2`): prefilter 19.1 min, align 16.2 min | ~35 min | 1 718 411 | 9.0x |
+| cascade step 3 (`-s 3`): prefilter 27.5 min, align 14.4 min | ~42 min | **1 686 609** | **9.2x** |
+| total | **1 h 56 min 43 s** (29.6 h CPU) | | |
+
+Peak memory 20.5 GB RSS, 26.5 GB in the cgroup; exit 0. Part of the time overlapped with CUDA builds and conda
+installs on the same host.
+
+| same thresholds (50 %, member cover 80 %) | DIAMOND 2.2.8 / 2.2.9 | MMseqs2 d401e78 |
+|---|---|---|
+| after the fast stages | 2 730 918 (5.7x) after 2 linear rounds, ~36 min | 1 841 921 (8.4x) after linclust + step 1, ~40 min |
+| sensitive stage | OOM at 36 GB; with patch B > 3 h extrapolated | 3 steps in ~77 min |
+| result | none | **1 686 609 clusters, 9.2x, under 2 h, 20.5 GB** |
+
+9.2x on mammals is above UniRef100 -> UniRef50 (7.9x on UniProtKB). Extrapolated to all six parts (442 G
+letters, 48x p1) at roughly linear scaling: ~4 days at 16 threads; an estimate, not measured, and the bacterial
+parts may reduce more and behave differently. `cluster` does not use a GPU (`--gpu` exists only for
+`ungappedprefilter`, `createdb`, `databases`, `tsv2exprofiledb`).
+
+GPU on dell (Tesla P4, Pascal sm_61, 7.5 GB), tested 2026-11-16 and removed again: MMseqs2-GPU (`libmarv`)
+needs CUDA 12 and Ampere for full speed; the README rules out Pascal. A build with CUDA 11.8 for sm_61 compiled
+after three adaptations (fallbacks for the CUDA 12 DPX intrinsics, `__grid_constant__` defined empty as it needs
+compute_70, `thrust::cuda::par_nosync` aliased to `par` for Thrust 1.15, plus linking `libcudadevrt.a`; patch
+kept as `/mnt/archive/nr_cluster_test_keep/mmseqs_cuda118_sm61.patch`). At run time the gapless prefilter kernel
+asks for more than 48 KB shared memory per block (`cudaFuncSetAttribute` in `pssmkernels_gapless.cuh`), which
+Pascal cannot grant (opt-in above 48 KB exists from Volta on): `CUDA error: invalid argument`. A CUDA 12 build
+would fail at the same point. Making it run would need a kernel selection limited to 48 KB tiles, with doubtful
+speed on a card with little FP16 throughput.
+
+### Own GPU clustering POC against MMseqs2 (2026-11-16)
+
+Question: does the Tesla P4 help a deliberately simple clustering, and how good is it? Code and results in
+`/mnt/archive/nr_cluster_test_keep` (`kmer_gemm_cluster.py`, `poc_eval.py`, `poc_eval_100k*.txt`, `*.timing.json`).
+
+Algorithm: every sequence becomes a 0/1 vector of its 4-mers in the Murphy 10-letter reduced alphabet (10 000
+columns, not hashed); S = X @ X.T (PyTorch, in row tiles, same code on GPU and CPU) gives the shared k-mers of every
+pair; score = containment of the member's k-mers in the candidate minus the candidate's chance level; per member the
+64 best candidates; greedy by length as MMseqs2's greedy mode. Two lessons from the first runs: hashing to 4 096
+bins let long sequences "contain" everything, and without positions (no diagonal, no alignment) a titin of
+35 516 aa built from repeated domains swallowed 19 105 of 20 000 sequences; hence exact 4-mers, the chance
+correction, and as a crude stand-in for locality a representative at most twice as long as the member.
+
+100 000 random sequences of p1_mammalia (118.6 M letters), all-vs-all = 10^10 pairs, 200 TFLOP:
+
+| | similarity (all vs all) | total |
+|---|---|---|
+| POC on the Tesla P4 (PyTorch 2.0.1, CUDA 11.8, fp32) | **84.7 s** (2.36 TFLOPS) | 1 min 43 s, 4.9 GB |
+| POC on the CPU (i7-12700, 16 threads) | **266.4 s** (0.75 TFLOPS) | 4 min 37 s, 6.0 GB |
+| MMseqs2 `cluster` (50 %, member cover 80 %, 16 threads) | - | **28.5 s**, 1.2 GB |
+
+GPU and CPU give almost the same clusters: 0.04-1.2 % of the members get another representative (float rounding,
+ties in `topk`), cluster counts differ by at most 23.
+
+Quality against MMseqs2 on the same set (pair counting; "valid" = a sample of 2 000 member -> representative
+assignments re-aligned locally with BLOSUM62, gap 11/1, reaching >= 50 % identity over the alignment columns and
+>= 80 % member coverage):
+
+| clustering | clusters | precision | recall | F1 | valid | median identity |
+|---|---|---|---|---|---|---|
+| **MMseqs2** | 32 300 | 1.000 | 1.000 | 1.000 | **0.955** | 0.794 |
+| POC 0.05 | 9 161 | 0.060 | 0.251 | 0.097 | 0.226 | 0.350 |
+| POC 0.10 | 9 570 | 0.060 | 0.251 | 0.097 | 0.211 | 0.357 |
+| POC 0.15 | 12 118 | 0.062 | 0.253 | 0.100 | 0.236 | 0.360 |
+| POC 0.20 | 15 894 | 0.070 | 0.265 | 0.110 | 0.286 | 0.384 |
+| POC 0.25 | 20 237 | 0.080 | 0.292 | 0.126 | 0.373 | 0.469 |
+| POC 0.30 | 24 650 | 0.137 | 0.340 | 0.195 | 0.549 | 0.629 |
+| POC 0.40 | 33 033 | 0.443 | 0.377 | 0.407 | 0.783 | 0.780 |
+
+At 0.40 the POC matches MMseqs2's cluster count and median identity, but only 78 % of its assignments are valid
+(MMseqs2 95.5 %; the 4.5 % come from the different check: Biopython alignment, gap costs, masked X) and it finds
+38 % of MMseqs2's pairs. The GPU makes the matrix product 3x faster than the CPU, but the matrix product is the
+wrong approach: it computes all N^2 pairs where MMseqs2 aligns a few candidates per sequence, so MMseqs2 on the CPU
+is already 3x faster than the GPU at 100 000 sequences and the gap grows with N^2 (1 M sequences: ~2.4 h on the
+P4 for the similarity alone). Adding an alignment check to the POC would cost, from the measured rates
+(Biopython ~27 alignments/s/thread; MMseqs2 `align` 18.9 min for up to 41 M candidate pairs at 16 threads),
+minutes to hours depending on the variant; not built, decision: stay with MMseqs2 on the CPU.
 
 ## Public clustered databases and prior work
 
@@ -233,7 +351,7 @@ sequences of the parts are SEG-masked (X), for both tools alike.
 
 Shape: all of them ship flat files, one row per member (UniProt idmapping, ClusteredNR SQLite, MMseqs2 or
 DIAMOND TSV); UniRef is a tree because each level clusters the representatives of the level below. The
-planned `blast_cluster (oid, part, rep90_oid, rep50_oid)` follows the idmapping pattern with two levels; it is
+`blast_cluster (oid, part, rep90_oid, rep50_oid, ...)` follows the idmapping pattern with two levels; it is
 a tree only if the 50 % stage runs on the 90 % representatives (MMseqs2 `cluster` and DIAMOND's cascaded
 rounds do).
 
@@ -273,7 +391,7 @@ strongly (Fc receptor and complement activation strong for IgG1/IgG3, weak for I
 IgG4) through a few residues in the hinge and lower CH2 region, which barely change identity.
 
 Consequences for the concept: a representative stands for a family, not for a function; where a few residues
-decide the function, expanding to the members is required (as in *Search with representatives*); function
+decide the function, expanding a hit family to its members is required; function
 belongs to each member, never to the cluster.
 
 Public function groupings (they classify by curated families, orthology or domain models, not by identity):
@@ -301,15 +419,8 @@ Sources: <https://www.ebi.ac.uk/training/online/courses/introduction-to-cath-dat
 
 ## Open points
 
-- all-vs-all round of the 50 % stage on 64 GB: fewer threads did not help, `-b` is not allowed (both tested);
-  cause found (16 query bins, two buffers of the largest bin, see above). Running: patch B, same setup
-  (`c50_v229b.log`, `c50_v229b_mem.txt` with anon/file/disk). Alternatives: all four rounds linear
-  (`--cluster-steps faster_lin fast_lin linclust-40_lin default_lin`, not measured yet) or MMseqs2
-
-- the TSV names representative and member by accession, not by record number: map through `blast_acc.acc`
-  (index `idx_acc`) to OIDs; or by rank in `<part>.oids.npy` if the record order can be recovered
-- p4/p5 (352 M / 344 M sequences): within the 30 GB limit DIAMOND works in blocks; time unknown until p1 is
-  measured
-- form: switch "all members / one hit per family", expand button
-- ChEMBL link (gerontec/ChEMBL `nr_join.py`): target -> rep50 family -> all organisms with a similar protein,
-  as a fast alternative to a DIAMOND search per target
+- daily clusters are not linked to the existing nr; a search of the daily 50 % representatives against the parts
+  (DIAMOND) would attach each new family to its nearest known protein; not planned
+- form: show the families of the last days (one hit per family, expand to the members); not planned
+- ChEMBL link (gerontec/ChEMBL `nr_join.py`): target -> family -> organisms; would need the full clustering
+- DIAMOND patch B (query bins in the all-vs-all round) removes the OOM as far as tested, not run to the end, no PR
