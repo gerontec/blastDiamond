@@ -32,331 +32,30 @@
 \setlength{\emergencystretch}{3em}
 \sloppy
 
-\title{\textbf{+1-Frameshift bei m1$\Psi$-mRNA}\\[2mm]
-\large Was das Nature-Paper belegt und was die nr-Datenbank dazu hergibt}
-\author{Auswertung auf dell-3660, NCBI-nr in sechs DIAMOND-Teil-Datenbanken}
+\title{\textbf{Acht der 123 +1FS-Spike-Peptide stammen aus den UTR,
+nicht aus dem Spike}\\[2mm]
+\large Ein Zufallsfund an Extended Data Table 3 von Mulroney et al.,
+Nature 625, 189--194 (2024)}
+\author{}
 \date{@@datum@@}
 
 \begin{document}
 \maketitle
+\thispagestyle{plain}
 
-\section*{Die Fragen und die kurzen Antworten}
+\section*{Der Fund}
 
-Anlass war ein Zeitungstext über „gestörte Translation``. Er bezieht sich auf
-Mulroney et al., \emph{Nature} \textbf{625}, 189--194 (2024),
-\emph{N1-methylpseudouridylation of mRNA causes +1 ribosomal frameshifting}
-(DOI \href{https://doi.org/10.1038/s41586-023-06800-3}{10.1038/s41586-023-06800-3},
-PMID 38057663).
+\begin{quote}
+\textbf{Acht der 123 Peptide des +1FS-Spike-Pools stammen nicht aus dem
+Spike-Leserahmen.} Sieben liegen hinter dem Spike-Stoppcodon im menschlichen
+3'-UTR des Konstrukts, eines davor im 5'-UTR. Ihre +1-Übersetzung ist damit
+\emph{menschliche} Sequenz und kein neuartiges Produkt.
+\end{quote}
 
-\begin{enumerate}
-\item \textbf{Gibt es in der BLAST-DB schon Proben solcher Proteine?}
-      Nein. Weder vorher zu erwarten noch nachträglich gefunden.
-\item \textbf{Nennt das Paper eine solche Sequenz?} Ja, zwei Sätze:
-      @@n_fs@@ vorhergesagte Peptide in Extended Data Table~3 und 9
-      massenspektrometrisch belegte in Extended Data Table~1.
-\item \textbf{Ein humanes Protein wird nicht als human erfasst?} Richtig, und
-      das ist kein Erfassungsfehler: die Taxon-Angabe in nr beschreibt die
-      Herkunft der kodierenden Sequenz, nicht die Zelle, die translatiert hat.
-\item \textbf{In welcher Teil-DB findet sich etwas?} Siehe
-      Abschnitt~\ref{sec:ergebnis}; die Positivkontrolle trifft, die
-      Impfstoff-Peptide nicht.
-\item \textbf{Wurde der Abbau über Entzündungsmarker untersucht?} Nein, von
-      niemandem.
-\item \textbf{Wie wurden die Proben ausgewählt, und wie hoch war die
-      Trefferquote?} Nicht randomisiert, Gelegenheitsstichprobe aus vier
-      Biobanken; Trefferquote 5 von 21 Geimpften, also rund 24\,\% -- nicht
-      1 von 1000.
-\item \textbf{Was ist das ähnlichste Protein in der ganzen nr?}
-      \texttt{AAG23172.1}, ein menschlicher Eintrag, mit 88\,\% Identität über
-      50 Reste -- und dieser eine Treffer stellt einiges richtig, siehe
-      Abschnitt~\ref{sec:aehnlich}.
-\end{enumerate}
+Aufgefallen ist das nicht durch Suchen danach, sondern über einen einzelnen
+Datenbanktreffer, der zu stark war, um Rauschen zu sein. Der Reihe nach.
 
-\section{Was im Paper tatsächlich steht}
-
-\subsection{Mechanismus}
-
-N1-Methylpseudouridin (m1$\Psi$) verlangsamt die Translation und lässt das
-Ribosom an \emph{slippery sites} um eine Base nach vorn rutschen. Die Autoren
-definieren diese Stellen über
-\[
-\text{m1}\Psi\;\text{m1}\Psi\;\text{m1}\Psi\;X,
-\qquad X \in \{\text{m1}\Psi,\ \text{C}\},
-\]
-wobei $X$ das \emph{erste} Nukleotid des unmittelbar folgenden Codons ist --
-faktisch \texttt{UUU} gefolgt von \texttt{U} oder \texttt{C}. Im Fluc-Reporter
-liegen drei solche Stellen (A, B, C). A liegt vor einem +1-Stoppcodon und trägt
-nichts bei; die Mutanten U*187C und U*208C (Stellen B und C) senken das
-Frameshifting deutlich, die Doppelmutante auf nicht mehr nachweisbar.
-\textbf{Sechs} identische Stellen verteilen sich über die BNT162b2-Spike-CDS
-(Extended Data Fig.~6).
-
-Rate: rund 8\,\% im Reporter; die Pressemitteilung aus Cambridge nennt etwa
-10\,\%. Meist bricht die Translation nach dem Rutsch ab. Selten läuft sie im
-+1-Rahmen weiter und erzeugt ein chimäres Protein: vorn korrekt, hinter der
-Rutschstelle sinnlos. Das Junction-Peptid über die Rahmengrenze wurde per
-LC--MS/MS direkt nachgewiesen (Fig.~3b), dazu neun Peptide aus dem +1-Rahmen
-(Extended Data Table~1).
-
-\subsection{Nachweis am Menschen}
-
-IFN$\gamma$-ELISpot: PBMC von 21 BNT162b2-Geimpften gegen 20
-ChAdOx1-Geimpfte, stimuliert mit den +1FS-Peptiden. Signifikant erhöhte Antwort
-nur nach BNT162b2 ($P = 0{,}0233$); bei Mäusen deutlicher ($P = 0{,}0005$ gegen
-unbehandelt). ChAdOx1 nutzt keine m1$\Psi$-mRNA und dient als Negativkontrolle.
-Auf In-Frame-Spike reagierten beide Gruppen.
-
-\subsection{Wie die Proben ausgewählt wurden}
-
-Nicht randomisiert. Das Paper enthält weder einen Kohortenabschnitt noch
-Ein- oder Ausschlusskriterien; die Proben stammen als Gelegenheitsstichprobe
-aus vier bereits bestehenden britischen Sammlungen:
-
-\begin{itemize}
-\item NIHR National BioResource, Research Tissue Bank, REC 17/EE/0025
-\item PITCH, Substudie von SIREN (IRAS 284460, REC 20/SC/0230,
-      ISRCTN11041050) -- SIREN ist eine Kohorte von Beschäftigten im
-      Gesundheitswesen, also keine Bevölkerungsstichprobe
-\item Liverpool, \emph{Human immune responses to acute virus infections}
-      (16/NW/0170)
-\item Oxford, GI Biobank Study (16/YH/0247)
-\end{itemize}
-
-Die einzige genannte Auswahleigenschaft der Teilnehmer ist, dass
-\emph{``none of whom reported undue effects as a result of vaccination''}.
-Alter und Geschlecht stehen nur nachträglich in Supplementary Table~1, nicht
-als Kriterium. Für die Tierversuche sagt das Paper es ausdrücklich:
-\emph{``Mice were not randomly assigned to groups and experimenters were not
-blinded to experiments''} ($n = 8$ je Gruppe).
-
-\subsection{Trefferquote: etwa jeder Vierte}
-
-Die Einzelwerte stehen in Extended Data Fig.~2: die Sample-IDs kodieren das
-Responder-Flag und die SFU-Zahl, Schwelle ist ein ELISpot-Count
-$> 40$\,SFU/Million. Ausgezählt ergibt das fünf Responder:
-
-\begin{center}
-\begin{tabular}{lr}
-\toprule
-Responder & SFU/Mio. \\
-\midrule
-Donor-11 & 155 \\
-Donor-21 & 105 \\
-Donor-19 & 51{,}7 \\
-Donor-25 & 43 \\
-Donor-13 & 40 \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-Dem stehen 15 Geimpfte unter der Schwelle gegenüber (Donor-32 bei 10, alle
-übrigen bei 0). Das sind die 20 BNT162b2-Geimpften mit HLA-Typisierung; der
-ELISpot-Vergleich nennt 21, einem fehlt die HLA-Bestimmung.
-
-\[
-\text{Trefferquote} \;=\; \frac{5}{21} \;\approx\; 24\,\%
-\]
-
-Zwei Einschränkungen sind der Abbildung direkt zu entnehmen. Donor-13 liegt mit
-exakt 40 \emph{nicht} über der eigenen Schwelle „$> 40$``, wird aber als
-Responder geführt. Und die Signifikanz der Humandaten ($P = 0{,}0233$) stammt
-aus einem \textbf{einseitigen} Welch-t-Test; bei fünf Respondern unter 21, von
-denen zwei knapp an der Schwelle liegen, ist das ein schwaches Ergebnis. Die
-Mausdaten sind mit $P = 0{,}0005$ bzw.\ $P = 0{,}001$ deutlich robuster.
-
-Davon zu trennen ist die \emph{molekulare} Rutschrate: rund 8\,\% im
-Fluc-Reporter, in der Cambridge-Pressemitteilung mit etwa 10\,\% angegeben --
-also ungefähr 1 von 12, nicht 1 von 1000. Die beiden Zahlen messen
-Verschiedenes: 8\,\% ist Biochemie im Reagenzglas, 24\,\% ist der Anteil
-Geimpfter, bei denen später eine T-Zell-Antwort gegen diese Produkte
-nachweisbar war. In der Regel bricht die Translation nach dem Rutsch ohnehin
-ab; nur ein Teil läuft im +1-Rahmen weiter und ergibt ein vollständiges
-Fehlprodukt.
-
-\subsection{Abbau und Entzündungsmarker: nicht untersucht}
-
-Ein Volltext-Scan des Papers ergibt \textbf{null} Fundstellen für
-\texttt{degrad*}, \texttt{proteasom*}, \texttt{inflammat*}, \texttt{half-life}
-und \texttt{misfold*}. Es gibt keine Abbaukinetik, keine CRP- oder IL-6-Werte,
-keinen Zeitverlauf.
-
-Indirekt folgt aus der ELISpot-Antwort allerdings zwingend, dass die Produkte
-\emph{überhaupt} abgebaut werden: MHC-I-Präsentation setzt proteasomalen Abbau
-voraus. Dass T-Zellen reagieren, heißt also, die Produkte werden zerlegt und
-präsentiert. Über die Geschwindigkeit sagt das nichts.
-
-Die Autoren benennen die Lücke selbst: \emph{``the evolution of antibody and
-cytolytic T cell responses against +1 frameshifted spike variants and peptides
-has not been systematically evaluated in humans''}, und zur Risikofrage:
-\emph{``there is no evidence that frameshifted products in humans generated
-from BNT162b2 vaccination are associated with adverse outcomes''}.
-
-Eine PubMed-Suche \texttt{frameshift AND (BNT162b2 OR N1-methylpseudouridine)}
-liefert genau einen Treffer: das Paper selbst. Eine Folgestudie mit
-Entzündungsmarkern existiert nicht. Was als Folgearbeit zirkuliert -- Boros et
-al., \emph{Pharmacol Res Perspect} \textbf{12}, e1218 (2024), PMID 38867495 --
-ist ein Übersichtsartikel ohne eigene Messdaten zum Frameshift; die dort
-referierten neun +1-Peptide sind Mulroneys Extended Data Table~1. Die dort
-angeführte erhöhte FDG-Aufnahme im Herzmuskel bis 180 Tage ist Interpretation
-der Autoren und unabhängig nicht bestätigt.
-
-\section{Warum nr diese Proteine nicht führt, und erst recht nicht als human}
-
-Die \texttt{taxid} in nr beschreibt die Herkunft der \emph{kodierenden
-Sequenz}, nicht die Zelle, die das Protein gebaut hat. nr ist keine
-Proteomvorhersage, sondern eine Sammlung eingereichter Records
-(GenBank-CDS-Translationen, RefSeq, SwissProt, PDB, PIR, PRF); der Taxon stammt
-aus dem \texttt{/organism}-Qualifier des Einreichers. Daraus folgt dreifach:
-
-\begin{enumerate}
-\item Kodiert werden die Produkte von der BNT162b2-mRNA, einem synthetischen,
-      codon-optimierten Konstrukt. Dass menschliche Ribosomen translatieren,
-      macht daraus kein humanes Gen -- so wie auch das In-Frame-Spike in nr
-      unter SARS-CoV-2 bzw.\ \emph{synthetic construct} läuft, nicht unter
-      \emph{Homo sapiens}.
-\item Es ist ein \emph{Translations}fehler. Die Autoren haben per RNA-seq
-      geprüft, dass weder DNA-Mutation noch Transkriptfehler vorliegen
-      (Extended Data Table~2). RefSeq annotiert Gene und deren korrekte
-      Leserahmen; für Produkte fehlerhafter Translation gibt es in nr keine
-      Kategorie.
-\item Niemand hat sie eingereicht. Hinterlegt sind nur MassIVE
-      \texttt{MSV000093074} (MS-Rohdaten), GEO \texttt{GSE223044} (RNA-seq) und
-      figshare \texttt{10.6084/m9.figshare.24271744}. Die vorhergesagten
-      +1-Polypeptide existierten nur als lokale FASTA in der
-      Proteome-Discoverer-Suche, ohne Accession.
-\end{enumerate}
-
-Was man \emph{im} humanen Taxon findet, ist das Gegenteil: echte
-Frameshift-Produkte aus \emph{Mutationen}, weil dort das Gen selbst verschoben
-ist und eingereicht wurde. Der dokumentierte Fall dazu im Repo ist UBB+1
-(\texttt{examples/frameshift\_ubb1.md}): Ubiquitin 1--75 plus 20 fremde Reste,
-in nr als \texttt{3K9O\_B} hinterlegt.
-
-Die Autoren haben den Abgleich sogar selbst gemacht: Extended Data Fig.~4,
-\emph{``NCBI BLASTP alignment of +1 translated products''}, BNT162b2-+1-Rahmen
-gegen den +1-Rahmen des Wildtyp-S-Gens (NC\_045512.2). Ergebnis im Text: die
-+1-Peptide folgen aus der Impfstoffsequenz, \emph{nicht} aus dem Wildvirus.
-
-\section{Die Suche gegen die lokale nr}
-
-\subsection{Abfragesatz}
-
-Drei Klassen, unterscheidbar am FASTA-Präfix:
-
-@@class_summary@@
-
-Die Positivkontrolle ist der entscheidende Teil des Aufbaus: Firefly-Luciferase
-steht in nr (UniProt \texttt{P08659}, 550\,aa). Werden ihre In-Frame-Peptide
-\emph{nicht} gefunden, ist die Suche falsch konfiguriert und ein negatives
-Ergebnis bei den Impfstoff-Peptiden wertlos.
-
-Die Abschrift der 123 Peptide aus dem Tabellenbild wurde über die Kettenlogik
-des Pools geprüft: aufeinander folgende Peptide überlappen, solange sie zum
-selben +1-Abschnitt gehören. Es bleiben 41 Abbruchstellen, also 42
-+1-Abschnitte, die jeweils an einem Stoppcodon enden; alle übrigen 81 Übergänge
-passen buchstabengenau zusammen. Eine Inkonsistenz
-(\texttt{PPDSPLCTPGTGSGSAI} gegen \texttt{LCTPPGTGSGSAIAW}, ein \texttt{P}
-Unterschied) steht so in der Publikation und wurde nicht korrigiert.
-
-\subsection{Parameter}
-
-Sechs DIAMOND-Teil-DBs der NCBI-nr, zusammen rund 1,18\,Mrd.\ Sequenzen.
-\texttt{-{}-dbsize} auf die Summe aller Teile gesetzt, damit die E-Werte denen
-einer Suche gegen die ganze nr entsprechen. Sensitivität: DIAMOND-Standard, wie
-in \texttt{pipeline/frameshift\_scan.py}, damit das Ergebnis mit dem
-dokumentierten UBB+1-Lauf vergleichbar bleibt; \texttt{-{}-evalue 1000},
-\texttt{-{}-max-target-seqs 50}, 20 Threads, \texttt{-{}-block-size 2}.
-
-Die lockere E-Wert-Schwelle ist nötig, weil Peptide von 8--27\,aa niedrige
-Scores erreichen. Exaktheit wird erst nachgelagert erzwungen: gezählt wird nur,
-was \texttt{pident} $= 100$ \emph{und} \texttt{length} $=$ \texttt{qlen}
-erfüllt, also das ganze Peptid buchstabengenau abdeckt.
-
-Als Empfindlichkeitskontrolle lief p1\_mammalia zusätzlich mit
-\texttt{-{}-ultra-sensitive -{}-masking 0 -{}-comp-based-stats 0}: 457\,s statt
-18\,s, mit demselben Ergebnis für die Spike-Peptide. Die Standardeinstellung
-übersieht hier also nichts.
-
-\subsection{Laufzeiten}
-
-@@runtime_table@@
-
-Gesamtlaufzeit @@total_runtime@@ für @@n_all@@ Peptide gegen 1,18\,Mrd.\ Sequenzen.
-Die Laufzeit folgt der Dateigröße der Teil-DB, nicht der Trefferzahl: DIAMOND
-liest den Block-Index linear.
-
-\subsection{Ergebnis}
-\label{sec:ergebnis}
-
-DIAMOND lieferte roh @@n_raw@@ HSPs. Nach dem Exaktheitsfilter bleiben
-@@n_exact@@ Zeilen, die gegen \texttt{blast\_acc}, \texttt{blast\_seq} und
-\texttt{blast\_taxon} in der wagodb verbunden wurden:
-
-\footnotesize
-@@meta_table@@
-\normalsize
-
-\subsection{Einordnung}
-
-Drei Dinge sind daran bemerkenswert.
-
-\textbf{Erstens} greift die Positivkontrolle: die In-Frame-Luciferase-Peptide
-werden gefunden. Die Suche funktioniert, das negative Ergebnis bei den
-Spike-Peptiden ist also belastbar.
-
-\textbf{Zweitens} werden auch die MS-belegten „+1FS``-Peptide des Reporters
-gefunden -- das ist kein Widerspruch, sondern Bauart. Im Fluc+1FS-Konstrukt ist
-der C-Terminus der Luciferase \emph{absichtlich} in den +1-Rahmen gelegt; wenn
-das Ribosom rutscht, entsteht echte Luciferase-Sequenz, und genau deshalb
-kehrt die Enzymaktivität zurück. Diese Peptide sind Reporter-Artefakte, keine
-Impfstoffprodukte.
-
-\textbf{Drittens} trifft kein einziges der @@n_fs@@ Spike-Peptide. Bei
-1,18\,Mrd.\ Sequenzen tritt nicht einmal ein \emph{zufälliger}
-Volllängentreffer auf -- bei Peptiden ab etwa 12\,aa ist der Sequenzraum
-($20^{12} \approx 4 \cdot 10^{15}$) dafür zu groß. Das bestätigt den Befund der
-Autoren mit unabhängigen Daten und einem anderen Werkzeug: die +1-Produkte sind
-Artefakte der codon-optimierten Impfstoffsequenz und haben in der Natur kein
-Gegenstück.
-
-Methodische Grenze: DIAMOND ist ein Seed-and-Extend-Verfahren und für sehr
-kurze Queries nicht die empfindlichste Wahl. Für die kürzesten Peptide des
-Pools (\texttt{WSQSCCVA} und \texttt{PQRSCLCP}, je 8\,aa;
-\texttt{PRMCCTRTR}, 9\,aa) kann ein exakter Treffer theoretisch durch das
-Seed-Raster fallen. Für die Fragestellung ist das unerheblich: ein
-8-mer-Treffer wäre Zufall und kein Beleg für Existenz.
-
-\section{Clusterlauf: gruppieren die Peptide mit etwas Menschlichem?}
-
-Die exakte Suche beantwortet nur, ob eine Sequenz \emph{identisch} vorkommt.
-Die schwächere Frage -- ob ein Peptid mit einem menschlichen Protein
-\emph{verwandt} genug ist, um mit ihm in einer Gruppe zu landen -- beantwortet
-ein Clusterlauf.
-
-Das bricht bewusst die stehende Regel von
-\texttt{pipeline/nr\_cluster\_daily.py} (``new sequences are compared only with
-each other, not with the rest of nr''). Die Peptide stehen in keiner
-nr-Ausgabe, der tägliche Lauf um 05:30 würde sie also nie anfassen. Der
-Gegenpart wurde auf \emph{Homo sapiens} beschränkt (taxid 9606,
-2\,285\,891 Sequenzen aus 3\,630\,866 Accessions), was den Lauf bezahlbar hält
-und genau die interessierende Frage trifft.
-
-Zwei Ebenen wie im Tageslauf, 90\,\% und darauf 50\,\% Identität. Ein
-Parameter musste abweichen: der Tageslauf nutzt \texttt{-{}-cov-mode 1}
-(Abdeckung des Targets), womit ein 15\,aa-Peptid niemals zu einem 550\,aa-Protein
-gehören kann, weil 80\,\% des Proteins abgedeckt sein müssten. Hier steht
-\texttt{-{}-cov-mode 2} (Abdeckung der kürzeren Sequenz), damit ein Peptid
-überhaupt Mitglied werden \emph{kann}. Mit \texttt{-{}-cov-mode 1} wäre jedes
-Peptid konstruktionsbedingt ein Einzelgänger -- ein Ergebnis ohne Aussage.
-
-In \texttt{blast\_cluster} und \texttt{blast\_cluster\_rep} wurde nichts
-geschrieben: diese Tabellen sind über \texttt{(oid, part)} verschlüsselt und
-tragen die Semantik eines Tagesupdates. Dies hier ist eine Auswertung, ihr
-Ergebnis liegt als TSV.
-
-@@cluster_section@@
-
-\section{Das ähnlichste Protein in der ganzen nr}
+\section{Der Treffer, der dorthin führte}
 \label{sec:aehnlich}
 
 Die Exaktsuche beantwortet nur ja/nein. Die naheliegende Anschlussfrage --
@@ -575,6 +274,282 @@ GC-reich codon-optimiertes Gen um eine Base verschoben gelesen wird. Solche
 Sequenzen falten schlecht und haben in der Natur kein Gegenstück; dass nr
 nichts dazu kennt, ist danach keine Überraschung mehr.
 
+
+\clearpage
+
+\section{Was im Paper tatsächlich steht}
+
+\subsection{Mechanismus}
+
+N1-Methylpseudouridin (m1$\Psi$) verlangsamt die Translation und lässt das
+Ribosom an \emph{slippery sites} um eine Base nach vorn rutschen. Die Autoren
+definieren diese Stellen über
+\[
+\text{m1}\Psi\;\text{m1}\Psi\;\text{m1}\Psi\;X,
+\qquad X \in \{\text{m1}\Psi,\ \text{C}\},
+\]
+wobei $X$ das \emph{erste} Nukleotid des unmittelbar folgenden Codons ist --
+faktisch \texttt{UUU} gefolgt von \texttt{U} oder \texttt{C}. Im Fluc-Reporter
+liegen drei solche Stellen (A, B, C). A liegt vor einem +1-Stoppcodon und trägt
+nichts bei; die Mutanten U*187C und U*208C (Stellen B und C) senken das
+Frameshifting deutlich, die Doppelmutante auf nicht mehr nachweisbar.
+\textbf{Sechs} identische Stellen verteilen sich über die BNT162b2-Spike-CDS
+(Extended Data Fig.~6).
+
+Rate: rund 8\,\% im Reporter; die Pressemitteilung aus Cambridge nennt etwa
+10\,\%. Meist bricht die Translation nach dem Rutsch ab. Selten läuft sie im
++1-Rahmen weiter und erzeugt ein chimäres Protein: vorn korrekt, hinter der
+Rutschstelle sinnlos. Das Junction-Peptid über die Rahmengrenze wurde per
+LC--MS/MS direkt nachgewiesen (Fig.~3b), dazu neun Peptide aus dem +1-Rahmen
+(Extended Data Table~1).
+
+\subsection{Nachweis am Menschen}
+
+IFN$\gamma$-ELISpot: PBMC von 21 BNT162b2-Geimpften gegen 20
+ChAdOx1-Geimpfte, stimuliert mit den +1FS-Peptiden. Signifikant erhöhte Antwort
+nur nach BNT162b2 ($P = 0{,}0233$); bei Mäusen deutlicher ($P = 0{,}0005$ gegen
+unbehandelt). ChAdOx1 nutzt keine m1$\Psi$-mRNA und dient als Negativkontrolle.
+Auf In-Frame-Spike reagierten beide Gruppen.
+
+\subsection{Wie die Proben ausgewählt wurden}
+
+Nicht randomisiert. Das Paper enthält weder einen Kohortenabschnitt noch
+Ein- oder Ausschlusskriterien; die Proben stammen als Gelegenheitsstichprobe
+aus vier bereits bestehenden britischen Sammlungen:
+
+\begin{itemize}
+\item NIHR National BioResource, Research Tissue Bank, REC 17/EE/0025
+\item PITCH, Substudie von SIREN (IRAS 284460, REC 20/SC/0230,
+      ISRCTN11041050) -- SIREN ist eine Kohorte von Beschäftigten im
+      Gesundheitswesen, also keine Bevölkerungsstichprobe
+\item Liverpool, \emph{Human immune responses to acute virus infections}
+      (16/NW/0170)
+\item Oxford, GI Biobank Study (16/YH/0247)
+\end{itemize}
+
+Die einzige genannte Auswahleigenschaft der Teilnehmer ist, dass
+\emph{``none of whom reported undue effects as a result of vaccination''}.
+Alter und Geschlecht stehen nur nachträglich in Supplementary Table~1, nicht
+als Kriterium. Für die Tierversuche sagt das Paper es ausdrücklich:
+\emph{``Mice were not randomly assigned to groups and experimenters were not
+blinded to experiments''} ($n = 8$ je Gruppe).
+
+\subsection{Trefferquote: etwa jeder Vierte}
+
+Die Einzelwerte stehen in Extended Data Fig.~2: die Sample-IDs kodieren das
+Responder-Flag und die SFU-Zahl, Schwelle ist ein ELISpot-Count
+$> 40$\,SFU/Million. Ausgezählt ergibt das fünf Responder:
+
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+Responder & SFU/Mio. \\
+\midrule
+Donor-11 & 155 \\
+Donor-21 & 105 \\
+Donor-19 & 51{,}7 \\
+Donor-25 & 43 \\
+Donor-13 & 40 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Dem stehen 15 Geimpfte unter der Schwelle gegenüber (Donor-32 bei 10, alle
+übrigen bei 0). Das sind die 20 BNT162b2-Geimpften mit HLA-Typisierung; der
+ELISpot-Vergleich nennt 21, einem fehlt die HLA-Bestimmung.
+
+\[
+\text{Trefferquote} \;=\; \frac{5}{21} \;\approx\; 24\,\%
+\]
+
+Zwei Einschränkungen sind der Abbildung direkt zu entnehmen. Donor-13 liegt mit
+exakt 40 \emph{nicht} über der eigenen Schwelle „$> 40$``, wird aber als
+Responder geführt. Und die Signifikanz der Humandaten ($P = 0{,}0233$) stammt
+aus einem \textbf{einseitigen} Welch-t-Test; bei fünf Respondern unter 21, von
+denen zwei knapp an der Schwelle liegen, ist das ein schwaches Ergebnis. Die
+Mausdaten sind mit $P = 0{,}0005$ bzw.\ $P = 0{,}001$ deutlich robuster.
+
+Davon zu trennen ist die \emph{molekulare} Rutschrate: rund 8\,\% im
+Fluc-Reporter, in der Cambridge-Pressemitteilung mit etwa 10\,\% angegeben --
+also ungefähr 1 von 12, nicht 1 von 1000. Die beiden Zahlen messen
+Verschiedenes: 8\,\% ist Biochemie im Reagenzglas, 24\,\% ist der Anteil
+Geimpfter, bei denen später eine T-Zell-Antwort gegen diese Produkte
+nachweisbar war. In der Regel bricht die Translation nach dem Rutsch ohnehin
+ab; nur ein Teil läuft im +1-Rahmen weiter und ergibt ein vollständiges
+Fehlprodukt.
+
+\subsection{Abbau und Entzündungsmarker: nicht untersucht}
+
+Ein Volltext-Scan des Papers ergibt \textbf{null} Fundstellen für
+\texttt{degrad*}, \texttt{proteasom*}, \texttt{inflammat*}, \texttt{half-life}
+und \texttt{misfold*}. Es gibt keine Abbaukinetik, keine CRP- oder IL-6-Werte,
+keinen Zeitverlauf.
+
+Indirekt folgt aus der ELISpot-Antwort allerdings zwingend, dass die Produkte
+\emph{überhaupt} abgebaut werden: MHC-I-Präsentation setzt proteasomalen Abbau
+voraus. Dass T-Zellen reagieren, heißt also, die Produkte werden zerlegt und
+präsentiert. Über die Geschwindigkeit sagt das nichts.
+
+Die Autoren benennen die Lücke selbst: \emph{``the evolution of antibody and
+cytolytic T cell responses against +1 frameshifted spike variants and peptides
+has not been systematically evaluated in humans''}, und zur Risikofrage:
+\emph{``there is no evidence that frameshifted products in humans generated
+from BNT162b2 vaccination are associated with adverse outcomes''}.
+
+Eine PubMed-Suche \texttt{frameshift AND (BNT162b2 OR N1-methylpseudouridine)}
+liefert genau einen Treffer: das Paper selbst. Eine Folgestudie mit
+Entzündungsmarkern existiert nicht. Was als Folgearbeit zirkuliert -- Boros et
+al., \emph{Pharmacol Res Perspect} \textbf{12}, e1218 (2024), PMID 38867495 --
+ist ein Übersichtsartikel ohne eigene Messdaten zum Frameshift; die dort
+referierten neun +1-Peptide sind Mulroneys Extended Data Table~1. Die dort
+angeführte erhöhte FDG-Aufnahme im Herzmuskel bis 180 Tage ist Interpretation
+der Autoren und unabhängig nicht bestätigt.
+
+\section{Warum nr diese Proteine nicht führt, und erst recht nicht als human}
+
+Die \texttt{taxid} in nr beschreibt die Herkunft der \emph{kodierenden
+Sequenz}, nicht die Zelle, die das Protein gebaut hat. nr ist keine
+Proteomvorhersage, sondern eine Sammlung eingereichter Records
+(GenBank-CDS-Translationen, RefSeq, SwissProt, PDB, PIR, PRF); der Taxon stammt
+aus dem \texttt{/organism}-Qualifier des Einreichers. Daraus folgt dreifach:
+
+\begin{enumerate}
+\item Kodiert werden die Produkte von der BNT162b2-mRNA, einem synthetischen,
+      codon-optimierten Konstrukt. Dass menschliche Ribosomen translatieren,
+      macht daraus kein humanes Gen -- so wie auch das In-Frame-Spike in nr
+      unter SARS-CoV-2 bzw.\ \emph{synthetic construct} läuft, nicht unter
+      \emph{Homo sapiens}.
+\item Es ist ein \emph{Translations}fehler. Die Autoren haben per RNA-seq
+      geprüft, dass weder DNA-Mutation noch Transkriptfehler vorliegen
+      (Extended Data Table~2). RefSeq annotiert Gene und deren korrekte
+      Leserahmen; für Produkte fehlerhafter Translation gibt es in nr keine
+      Kategorie.
+\item Niemand hat sie eingereicht. Hinterlegt sind nur MassIVE
+      \texttt{MSV000093074} (MS-Rohdaten), GEO \texttt{GSE223044} (RNA-seq) und
+      figshare \texttt{10.6084/m9.figshare.24271744}. Die vorhergesagten
+      +1-Polypeptide existierten nur als lokale FASTA in der
+      Proteome-Discoverer-Suche, ohne Accession.
+\end{enumerate}
+
+Was man \emph{im} humanen Taxon findet, ist das Gegenteil: echte
+Frameshift-Produkte aus \emph{Mutationen}, weil dort das Gen selbst verschoben
+ist und eingereicht wurde. Der dokumentierte Fall dazu im Repo ist UBB+1
+(\texttt{examples/frameshift\_ubb1.md}): Ubiquitin 1--75 plus 20 fremde Reste,
+in nr als \texttt{3K9O\_B} hinterlegt.
+
+Die Autoren haben den Abgleich sogar selbst gemacht: Extended Data Fig.~4,
+\emph{``NCBI BLASTP alignment of +1 translated products''}, BNT162b2-+1-Rahmen
+gegen den +1-Rahmen des Wildtyp-S-Gens (NC\_045512.2). Ergebnis im Text: die
++1-Peptide folgen aus der Impfstoffsequenz, \emph{nicht} aus dem Wildvirus.
+
+\section{Die Suche gegen die nr}
+
+\subsection{Abfragesatz}
+
+Drei Klassen, unterscheidbar am FASTA-Präfix:
+
+@@class_summary@@
+
+Die Positivkontrolle ist der entscheidende Teil des Aufbaus: Firefly-Luciferase
+steht in nr (UniProt \texttt{P08659}, 550\,aa). Werden ihre In-Frame-Peptide
+\emph{nicht} gefunden, ist die Suche falsch konfiguriert und ein negatives
+Ergebnis bei den Impfstoff-Peptiden wertlos.
+
+Die Abschrift der 123 Peptide aus dem Tabellenbild wurde über die Kettenlogik
+des Pools geprüft: aufeinander folgende Peptide überlappen, solange sie zum
+selben +1-Abschnitt gehören. Es bleiben 41 Abbruchstellen, also 42
++1-Abschnitte, die jeweils an einem Stoppcodon enden; alle übrigen 81 Übergänge
+passen buchstabengenau zusammen. Eine Inkonsistenz
+(\texttt{PPDSPLCTPGTGSGSAI} gegen \texttt{LCTPPGTGSGSAIAW}, ein \texttt{P}
+Unterschied) steht so in der Publikation und wurde nicht korrigiert.
+
+\subsection{Parameter}
+
+Sechs DIAMOND-Teil-DBs der NCBI-nr, zusammen rund 1,18\,Mrd.\ Sequenzen.
+\texttt{-{}-dbsize} auf die Summe aller Teile gesetzt, damit die E-Werte denen
+einer Suche gegen die ganze nr entsprechen. Sensitivität: DIAMOND-Standard, wie
+in \texttt{-{}-evalue 1000},
+\texttt{-{}-max-target-seqs 50}, 20 Threads, \texttt{-{}-block-size 2}.
+
+Die lockere E-Wert-Schwelle ist nötig, weil Peptide von 8--27\,aa niedrige
+Scores erreichen. Exaktheit wird erst nachgelagert erzwungen: gezählt wird nur,
+was \texttt{pident} $= 100$ \emph{und} \texttt{length} $=$ \texttt{qlen}
+erfüllt, also das ganze Peptid buchstabengenau abdeckt.
+
+Als Empfindlichkeitskontrolle lief p1\_mammalia zusätzlich mit
+\texttt{-{}-ultra-sensitive -{}-masking 0 -{}-comp-based-stats 0}: 457\,s statt
+18\,s, mit demselben Ergebnis für die Spike-Peptide. Die Standardeinstellung
+übersieht hier also nichts.
+
+\subsection{Laufzeiten}
+
+@@runtime_table@@
+
+Gesamtlaufzeit @@total_runtime@@ für @@n_all@@ Peptide gegen 1,18\,Mrd.\ Sequenzen.
+Die Laufzeit folgt der Dateigröße der Teil-DB, nicht der Trefferzahl: DIAMOND
+liest den Block-Index linear.
+
+\subsection{Ergebnis}
+\label{sec:ergebnis}
+
+DIAMOND lieferte roh @@n_raw@@ HSPs. Nach dem Exaktheitsfilter bleiben
+@@n_exact@@ Zeilen, die gegen \texttt{blast\_acc}, \texttt{blast\_seq} und
+\texttt{blast\_taxon} in der wagodb verbunden wurden:
+
+\footnotesize
+@@meta_table@@
+\normalsize
+
+\subsection{Einordnung}
+
+Drei Dinge sind daran bemerkenswert.
+
+\textbf{Erstens} greift die Positivkontrolle: die In-Frame-Luciferase-Peptide
+werden gefunden. Die Suche funktioniert, das negative Ergebnis bei den
+Spike-Peptiden ist also belastbar.
+
+\textbf{Zweitens} werden auch die MS-belegten „+1FS``-Peptide des Reporters
+gefunden -- das ist kein Widerspruch, sondern Bauart. Im Fluc+1FS-Konstrukt ist
+der C-Terminus der Luciferase \emph{absichtlich} in den +1-Rahmen gelegt; wenn
+das Ribosom rutscht, entsteht echte Luciferase-Sequenz, und genau deshalb
+kehrt die Enzymaktivität zurück. Diese Peptide sind Reporter-Artefakte, keine
+Impfstoffprodukte.
+
+\textbf{Drittens} trifft kein einziges der @@n_fs@@ Spike-Peptide. Bei
+1,18\,Mrd.\ Sequenzen tritt nicht einmal ein \emph{zufälliger}
+Volllängentreffer auf -- bei Peptiden ab etwa 12\,aa ist der Sequenzraum
+($20^{12} \approx 4 \cdot 10^{15}$) dafür zu groß. Das bestätigt den Befund der
+Autoren mit unabhängigen Daten und einem anderen Werkzeug: die +1-Produkte sind
+Artefakte der codon-optimierten Impfstoffsequenz und haben in der Natur kein
+Gegenstück.
+
+Methodische Grenze: DIAMOND ist ein Seed-and-Extend-Verfahren und für sehr
+kurze Queries nicht die empfindlichste Wahl. Für die kürzesten Peptide des
+Pools (\texttt{WSQSCCVA} und \texttt{PQRSCLCP}, je 8\,aa;
+\texttt{PRMCCTRTR}, 9\,aa) kann ein exakter Treffer theoretisch durch das
+Seed-Raster fallen. Für die Fragestellung ist das unerheblich: ein
+8-mer-Treffer wäre Zufall und kein Beleg für Existenz.
+
+\section{Clusterlauf: gruppieren die Peptide mit etwas Menschlichem?}
+
+Die exakte Suche beantwortet nur, ob eine Sequenz \emph{identisch} vorkommt.
+Die schwächere Frage -- ob ein Peptid mit einem menschlichen Protein
+\emph{verwandt} genug ist, um mit ihm in einer Gruppe zu landen -- beantwortet
+ein Clusterlauf.
+
+Dafür wurden die Peptide gemeinsam mit allen \emph{Homo sapiens}-Sequenzen
+der nr geclustert (taxid 9606, 2\,285\,891 Sequenzen aus 3\,630\,866
+Accessions), zwei Ebenen mit 90\,\% und darauf 50\,\% Identität.
+
+Ein Parameter ist dabei entscheidend. Unter Abdeckung des Targets
+(\texttt{-{}-cov-mode 1})
+ kann ein 15\,aa-Peptid niemals zu einem 550\,aa-Protein
+gehören, weil 80\,\% des Proteins abgedeckt sein müssten; jedes Peptid wäre
+konstruktionsbedingt ein Einzelgänger. Verwendet wurde daher
+\texttt{-{}-cov-mode 2}, die Abdeckung der kürzeren Sequenz.
+
+@@cluster_section@@
+
 \section{Was dieser Lauf der Studie hinzufügt, und was nicht}
 
 Der Mehrwert gegenüber der Publikation ist klein, und es wäre unredlich, ihn
@@ -679,45 +654,6 @@ abdeckt:
 \begin{lstlisting}
 if float(c[2]) == 100.0 and int(c[3]) == int(c[4]):   # pident, length == qlen
 \end{lstlisting}
-
-\subsection*{A.5 Metadaten-Join gegen die wagodb}
-
-Für jede Accession aus dem Exaktheitsfilter, in Blöcken zu 200:
-
-\begin{lstlisting}
-SELECT a.acc, a.taxid, s.len, s.title, t.name, t.rank
-  FROM blast_acc  a
-  JOIN blast_seq  s ON s.oid   = a.oid
-  LEFT JOIN blast_taxon t ON t.taxid = a.taxid
- WHERE a.acc IN (%s, %s, ...);
-\end{lstlisting}
-
-Zu beachten: \texttt{blast\_acc} hält eine Zeile je Defline, zusammengefasste
-Einträge haben also mehrere Accessions und Taxa je OID. Die von DIAMOND
-gemeldete \texttt{staxids} kann daher von der hier verbundenen
-\texttt{taxid} abweichen -- genau das ist beim Treffer
-\texttt{WP\_212371658.1} der Fall (DIAMOND meldet 10090, die Tabelle führt 2).
-
-\subsection*{A.6 Vorbereitende Abfragen}
-
-Bestand und Zuschnitt der Teil-DBs:
-
-\begin{lstlisting}
-SELECT * FROM blast_part;
-\end{lstlisting}
-
-Grobe Vorabprüfung, ob überhaupt etwas Einschlägiges in nr steht
-(\emph{synthetic construct} 32630, SARS-CoV-2 2697049, Wuhan-Isolat 694009):
-
-\begin{lstlisting}
-SELECT taxid, COUNT(*) FROM blast_acc
- WHERE taxid IN (2697049, 32630, 694009) GROUP BY taxid;
--- 32630: 149 433 | 694009: 886 | 2697049: 7 134 543
-\end{lstlisting}
-
-Diese Zählung beantwortet die Ausgangsfrage allerdings nicht: Titel und Taxon
-sagen nichts darüber, ob eine \emph{Sequenz} vorkommt. Dafür war die
-Peptidsuche nötig.
 
 \section{Anhang B: vollständige Reproduktion, Schritt für Schritt}
 
