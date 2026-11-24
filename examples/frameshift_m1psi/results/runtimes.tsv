@@ -1,0 +1,8 @@
+part	seconds	rc	rows	mode
+p1_mammalia	18.1	0	14	fast
+p2_eukaryota_other	223.6	0	323	fast
+p3_viruses_archaea_other	101.2	0	350	fast
+p4_pseudomonadota	325.4	0	156	fast
+p5_bacillati	297.8	0	180	fast
+p6_bacteria_other	252.8	0	155	fast
+TOTAL	1218.9			fast

@@ -1,0 +1,855 @@
+
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[ngerman]{babel}
+\usepackage[margin=2.3cm]{geometry}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{lmodern}
+\usepackage[protrusion=true,expansion=false]{microtype}
+\usepackage[hidelinks]{hyperref}
+\usepackage{parskip}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0.4pt}
+\fancyfoot[L]{\footnotesize\href{https://github.com/gerontec/blastDiamond}%
+{\texttt{github.com/gerontec/blastDiamond}}}
+\fancyfoot[R]{\footnotesize\thepage}
+\fancypagestyle{plain}{\fancyhf{}%
+  \renewcommand{\headrulewidth}{0pt}\renewcommand{\footrulewidth}{0.4pt}%
+  \fancyfoot[L]{\footnotesize\href{https://github.com/gerontec/blastDiamond}%
+  {\texttt{github.com/gerontec/blastDiamond}}}%
+  \fancyfoot[R]{\footnotesize\thepage}}
+\usepackage{listings}
+\lstset{basicstyle=\ttfamily\scriptsize, breaklines=true,
+        breakatwhitespace=false, columns=fullflexible,
+        frame=single, framesep=4pt, xleftmargin=0pt,
+        postbreak=\mbox{\textcolor{gray}{$\hookrightarrow$}\space}}
+\usepackage{xcolor}
+\setlength{\emergencystretch}{3em}
+\sloppy
+
+\title{\textbf{+1-Frameshift bei m1$\Psi$-mRNA}\\[2mm]
+\large Was das Nature-Paper belegt und was die nr-Datenbank dazu hergibt}
+\author{Auswertung auf dell-3660, NCBI-nr in sechs DIAMOND-Teil-Datenbanken}
+\date{@@datum@@}
+
+\begin{document}
+\maketitle
+
+\section*{Die Fragen und die kurzen Antworten}
+
+Anlass war ein Zeitungstext über „gestörte Translation``. Er bezieht sich auf
+Mulroney et al., \emph{Nature} \textbf{625}, 189--194 (2024),
+\emph{N1-methylpseudouridylation of mRNA causes +1 ribosomal frameshifting}
+(DOI \href{https://doi.org/10.1038/s41586-023-06800-3}{10.1038/s41586-023-06800-3},
+PMID 38057663).
+
+\begin{enumerate}
+\item \textbf{Gibt es in der BLAST-DB schon Proben solcher Proteine?}
+      Nein. Weder vorher zu erwarten noch nachträglich gefunden.
+\item \textbf{Nennt das Paper eine solche Sequenz?} Ja, zwei Sätze:
+      @@n_fs@@ vorhergesagte Peptide in Extended Data Table~3 und 9
+      massenspektrometrisch belegte in Extended Data Table~1.
+\item \textbf{Ein humanes Protein wird nicht als human erfasst?} Richtig, und
+      das ist kein Erfassungsfehler: die Taxon-Angabe in nr beschreibt die
+      Herkunft der kodierenden Sequenz, nicht die Zelle, die translatiert hat.
+\item \textbf{In welcher Teil-DB findet sich etwas?} Siehe
+      Abschnitt~\ref{sec:ergebnis}; die Positivkontrolle trifft, die
+      Impfstoff-Peptide nicht.
+\item \textbf{Wurde der Abbau über Entzündungsmarker untersucht?} Nein, von
+      niemandem.
+\item \textbf{Wie wurden die Proben ausgewählt, und wie hoch war die
+      Trefferquote?} Nicht randomisiert, Gelegenheitsstichprobe aus vier
+      Biobanken; Trefferquote 5 von 21 Geimpften, also rund 24\,\% -- nicht
+      1 von 1000.
+\item \textbf{Was ist das ähnlichste Protein in der ganzen nr?}
+      \texttt{AAG23172.1}, ein menschlicher Eintrag, mit 88\,\% Identität über
+      50 Reste -- und dieser eine Treffer stellt einiges richtig, siehe
+      Abschnitt~\ref{sec:aehnlich}.
+\end{enumerate}
+
+\section{Was im Paper tatsächlich steht}
+
+\subsection{Mechanismus}
+
+N1-Methylpseudouridin (m1$\Psi$) verlangsamt die Translation und lässt das
+Ribosom an \emph{slippery sites} um eine Base nach vorn rutschen. Die Autoren
+definieren diese Stellen über
+\[
+\text{m1}\Psi\;\text{m1}\Psi\;\text{m1}\Psi\;X,
+\qquad X \in \{\text{m1}\Psi,\ \text{C}\},
+\]
+wobei $X$ das \emph{erste} Nukleotid des unmittelbar folgenden Codons ist --
+faktisch \texttt{UUU} gefolgt von \texttt{U} oder \texttt{C}. Im Fluc-Reporter
+liegen drei solche Stellen (A, B, C). A liegt vor einem +1-Stoppcodon und trägt
+nichts bei; die Mutanten U*187C und U*208C (Stellen B und C) senken das
+Frameshifting deutlich, die Doppelmutante auf nicht mehr nachweisbar.
+\textbf{Sechs} identische Stellen verteilen sich über die BNT162b2-Spike-CDS
+(Extended Data Fig.~6).
+
+Rate: rund 8\,\% im Reporter; die Pressemitteilung aus Cambridge nennt etwa
+10\,\%. Meist bricht die Translation nach dem Rutsch ab. Selten läuft sie im
++1-Rahmen weiter und erzeugt ein chimäres Protein: vorn korrekt, hinter der
+Rutschstelle sinnlos. Das Junction-Peptid über die Rahmengrenze wurde per
+LC--MS/MS direkt nachgewiesen (Fig.~3b), dazu neun Peptide aus dem +1-Rahmen
+(Extended Data Table~1).
+
+\subsection{Nachweis am Menschen}
+
+IFN$\gamma$-ELISpot: PBMC von 21 BNT162b2-Geimpften gegen 20
+ChAdOx1-Geimpfte, stimuliert mit den +1FS-Peptiden. Signifikant erhöhte Antwort
+nur nach BNT162b2 ($P = 0{,}0233$); bei Mäusen deutlicher ($P = 0{,}0005$ gegen
+unbehandelt). ChAdOx1 nutzt keine m1$\Psi$-mRNA und dient als Negativkontrolle.
+Auf In-Frame-Spike reagierten beide Gruppen.
+
+\subsection{Wie die Proben ausgewählt wurden}
+
+Nicht randomisiert. Das Paper enthält weder einen Kohortenabschnitt noch
+Ein- oder Ausschlusskriterien; die Proben stammen als Gelegenheitsstichprobe
+aus vier bereits bestehenden britischen Sammlungen:
+
+\begin{itemize}
+\item NIHR National BioResource, Research Tissue Bank, REC 17/EE/0025
+\item PITCH, Substudie von SIREN (IRAS 284460, REC 20/SC/0230,
+      ISRCTN11041050) -- SIREN ist eine Kohorte von Beschäftigten im
+      Gesundheitswesen, also keine Bevölkerungsstichprobe
+\item Liverpool, \emph{Human immune responses to acute virus infections}
+      (16/NW/0170)
+\item Oxford, GI Biobank Study (16/YH/0247)
+\end{itemize}
+
+Die einzige genannte Auswahleigenschaft der Teilnehmer ist, dass
+\emph{``none of whom reported undue effects as a result of vaccination''}.
+Alter und Geschlecht stehen nur nachträglich in Supplementary Table~1, nicht
+als Kriterium. Für die Tierversuche sagt das Paper es ausdrücklich:
+\emph{``Mice were not randomly assigned to groups and experimenters were not
+blinded to experiments''} ($n = 8$ je Gruppe).
+
+\subsection{Trefferquote: etwa jeder Vierte}
+
+Die Einzelwerte stehen in Extended Data Fig.~2: die Sample-IDs kodieren das
+Responder-Flag und die SFU-Zahl, Schwelle ist ein ELISpot-Count
+$> 40$\,SFU/Million. Ausgezählt ergibt das fünf Responder:
+
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+Responder & SFU/Mio. \\
+\midrule
+Donor-11 & 155 \\
+Donor-21 & 105 \\
+Donor-19 & 51{,}7 \\
+Donor-25 & 43 \\
+Donor-13 & 40 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Dem stehen 15 Geimpfte unter der Schwelle gegenüber (Donor-32 bei 10, alle
+übrigen bei 0). Das sind die 20 BNT162b2-Geimpften mit HLA-Typisierung; der
+ELISpot-Vergleich nennt 21, einem fehlt die HLA-Bestimmung.
+
+\[
+\text{Trefferquote} \;=\; \frac{5}{21} \;\approx\; 24\,\%
+\]
+
+Zwei Einschränkungen sind der Abbildung direkt zu entnehmen. Donor-13 liegt mit
+exakt 40 \emph{nicht} über der eigenen Schwelle „$> 40$``, wird aber als
+Responder geführt. Und die Signifikanz der Humandaten ($P = 0{,}0233$) stammt
+aus einem \textbf{einseitigen} Welch-t-Test; bei fünf Respondern unter 21, von
+denen zwei knapp an der Schwelle liegen, ist das ein schwaches Ergebnis. Die
+Mausdaten sind mit $P = 0{,}0005$ bzw.\ $P = 0{,}001$ deutlich robuster.
+
+Davon zu trennen ist die \emph{molekulare} Rutschrate: rund 8\,\% im
+Fluc-Reporter, in der Cambridge-Pressemitteilung mit etwa 10\,\% angegeben --
+also ungefähr 1 von 12, nicht 1 von 1000. Die beiden Zahlen messen
+Verschiedenes: 8\,\% ist Biochemie im Reagenzglas, 24\,\% ist der Anteil
+Geimpfter, bei denen später eine T-Zell-Antwort gegen diese Produkte
+nachweisbar war. In der Regel bricht die Translation nach dem Rutsch ohnehin
+ab; nur ein Teil läuft im +1-Rahmen weiter und ergibt ein vollständiges
+Fehlprodukt.
+
+\subsection{Abbau und Entzündungsmarker: nicht untersucht}
+
+Ein Volltext-Scan des Papers ergibt \textbf{null} Fundstellen für
+\texttt{degrad*}, \texttt{proteasom*}, \texttt{inflammat*}, \texttt{half-life}
+und \texttt{misfold*}. Es gibt keine Abbaukinetik, keine CRP- oder IL-6-Werte,
+keinen Zeitverlauf.
+
+Indirekt folgt aus der ELISpot-Antwort allerdings zwingend, dass die Produkte
+\emph{überhaupt} abgebaut werden: MHC-I-Präsentation setzt proteasomalen Abbau
+voraus. Dass T-Zellen reagieren, heißt also, die Produkte werden zerlegt und
+präsentiert. Über die Geschwindigkeit sagt das nichts.
+
+Die Autoren benennen die Lücke selbst: \emph{``the evolution of antibody and
+cytolytic T cell responses against +1 frameshifted spike variants and peptides
+has not been systematically evaluated in humans''}, und zur Risikofrage:
+\emph{``there is no evidence that frameshifted products in humans generated
+from BNT162b2 vaccination are associated with adverse outcomes''}.
+
+Eine PubMed-Suche \texttt{frameshift AND (BNT162b2 OR N1-methylpseudouridine)}
+liefert genau einen Treffer: das Paper selbst. Eine Folgestudie mit
+Entzündungsmarkern existiert nicht. Was als Folgearbeit zirkuliert -- Boros et
+al., \emph{Pharmacol Res Perspect} \textbf{12}, e1218 (2024), PMID 38867495 --
+ist ein Übersichtsartikel ohne eigene Messdaten zum Frameshift; die dort
+referierten neun +1-Peptide sind Mulroneys Extended Data Table~1. Die dort
+angeführte erhöhte FDG-Aufnahme im Herzmuskel bis 180 Tage ist Interpretation
+der Autoren und unabhängig nicht bestätigt.
+
+\section{Warum nr diese Proteine nicht führt, und erst recht nicht als human}
+
+Die \texttt{taxid} in nr beschreibt die Herkunft der \emph{kodierenden
+Sequenz}, nicht die Zelle, die das Protein gebaut hat. nr ist keine
+Proteomvorhersage, sondern eine Sammlung eingereichter Records
+(GenBank-CDS-Translationen, RefSeq, SwissProt, PDB, PIR, PRF); der Taxon stammt
+aus dem \texttt{/organism}-Qualifier des Einreichers. Daraus folgt dreifach:
+
+\begin{enumerate}
+\item Kodiert werden die Produkte von der BNT162b2-mRNA, einem synthetischen,
+      codon-optimierten Konstrukt. Dass menschliche Ribosomen translatieren,
+      macht daraus kein humanes Gen -- so wie auch das In-Frame-Spike in nr
+      unter SARS-CoV-2 bzw.\ \emph{synthetic construct} läuft, nicht unter
+      \emph{Homo sapiens}.
+\item Es ist ein \emph{Translations}fehler. Die Autoren haben per RNA-seq
+      geprüft, dass weder DNA-Mutation noch Transkriptfehler vorliegen
+      (Extended Data Table~2). RefSeq annotiert Gene und deren korrekte
+      Leserahmen; für Produkte fehlerhafter Translation gibt es in nr keine
+      Kategorie.
+\item Niemand hat sie eingereicht. Hinterlegt sind nur MassIVE
+      \texttt{MSV000093074} (MS-Rohdaten), GEO \texttt{GSE223044} (RNA-seq) und
+      figshare \texttt{10.6084/m9.figshare.24271744}. Die vorhergesagten
+      +1-Polypeptide existierten nur als lokale FASTA in der
+      Proteome-Discoverer-Suche, ohne Accession.
+\end{enumerate}
+
+Was man \emph{im} humanen Taxon findet, ist das Gegenteil: echte
+Frameshift-Produkte aus \emph{Mutationen}, weil dort das Gen selbst verschoben
+ist und eingereicht wurde. Der dokumentierte Fall dazu im Repo ist UBB+1
+(\texttt{examples/frameshift\_ubb1.md}): Ubiquitin 1--75 plus 20 fremde Reste,
+in nr als \texttt{3K9O\_B} hinterlegt.
+
+Die Autoren haben den Abgleich sogar selbst gemacht: Extended Data Fig.~4,
+\emph{``NCBI BLASTP alignment of +1 translated products''}, BNT162b2-+1-Rahmen
+gegen den +1-Rahmen des Wildtyp-S-Gens (NC\_045512.2). Ergebnis im Text: die
++1-Peptide folgen aus der Impfstoffsequenz, \emph{nicht} aus dem Wildvirus.
+
+\section{Die Suche gegen die lokale nr}
+
+\subsection{Abfragesatz}
+
+Drei Klassen, unterscheidbar am FASTA-Präfix:
+
+@@class_summary@@
+
+Die Positivkontrolle ist der entscheidende Teil des Aufbaus: Firefly-Luciferase
+steht in nr (UniProt \texttt{P08659}, 550\,aa). Werden ihre In-Frame-Peptide
+\emph{nicht} gefunden, ist die Suche falsch konfiguriert und ein negatives
+Ergebnis bei den Impfstoff-Peptiden wertlos.
+
+Die Abschrift der 123 Peptide aus dem Tabellenbild wurde über die Kettenlogik
+des Pools geprüft: aufeinander folgende Peptide überlappen, solange sie zum
+selben +1-Abschnitt gehören. Es bleiben 41 Abbruchstellen, also 42
++1-Abschnitte, die jeweils an einem Stoppcodon enden; alle übrigen 81 Übergänge
+passen buchstabengenau zusammen. Eine Inkonsistenz
+(\texttt{PPDSPLCTPGTGSGSAI} gegen \texttt{LCTPPGTGSGSAIAW}, ein \texttt{P}
+Unterschied) steht so in der Publikation und wurde nicht korrigiert.
+
+\subsection{Parameter}
+
+Sechs DIAMOND-Teil-DBs der NCBI-nr, zusammen rund 1,18\,Mrd.\ Sequenzen.
+\texttt{-{}-dbsize} auf die Summe aller Teile gesetzt, damit die E-Werte denen
+einer Suche gegen die ganze nr entsprechen. Sensitivität: DIAMOND-Standard, wie
+in \texttt{pipeline/frameshift\_scan.py}, damit das Ergebnis mit dem
+dokumentierten UBB+1-Lauf vergleichbar bleibt; \texttt{-{}-evalue 1000},
+\texttt{-{}-max-target-seqs 50}, 20 Threads, \texttt{-{}-block-size 2}.
+
+Die lockere E-Wert-Schwelle ist nötig, weil Peptide von 8--27\,aa niedrige
+Scores erreichen. Exaktheit wird erst nachgelagert erzwungen: gezählt wird nur,
+was \texttt{pident} $= 100$ \emph{und} \texttt{length} $=$ \texttt{qlen}
+erfüllt, also das ganze Peptid buchstabengenau abdeckt.
+
+Als Empfindlichkeitskontrolle lief p1\_mammalia zusätzlich mit
+\texttt{-{}-ultra-sensitive -{}-masking 0 -{}-comp-based-stats 0}: 457\,s statt
+18\,s, mit demselben Ergebnis für die Spike-Peptide. Die Standardeinstellung
+übersieht hier also nichts.
+
+\subsection{Laufzeiten}
+
+@@runtime_table@@
+
+Gesamtlaufzeit @@total_runtime@@ für @@n_all@@ Peptide gegen 1,18\,Mrd.\ Sequenzen.
+Die Laufzeit folgt der Dateigröße der Teil-DB, nicht der Trefferzahl: DIAMOND
+liest den Block-Index linear.
+
+\subsection{Ergebnis}
+\label{sec:ergebnis}
+
+DIAMOND lieferte roh @@n_raw@@ HSPs. Nach dem Exaktheitsfilter bleiben
+@@n_exact@@ Zeilen, die gegen \texttt{blast\_acc}, \texttt{blast\_seq} und
+\texttt{blast\_taxon} in der wagodb verbunden wurden:
+
+\footnotesize
+@@meta_table@@
+\normalsize
+
+\subsection{Einordnung}
+
+Drei Dinge sind daran bemerkenswert.
+
+\textbf{Erstens} greift die Positivkontrolle: die In-Frame-Luciferase-Peptide
+werden gefunden. Die Suche funktioniert, das negative Ergebnis bei den
+Spike-Peptiden ist also belastbar.
+
+\textbf{Zweitens} werden auch die MS-belegten „+1FS``-Peptide des Reporters
+gefunden -- das ist kein Widerspruch, sondern Bauart. Im Fluc+1FS-Konstrukt ist
+der C-Terminus der Luciferase \emph{absichtlich} in den +1-Rahmen gelegt; wenn
+das Ribosom rutscht, entsteht echte Luciferase-Sequenz, und genau deshalb
+kehrt die Enzymaktivität zurück. Diese Peptide sind Reporter-Artefakte, keine
+Impfstoffprodukte.
+
+\textbf{Drittens} trifft kein einziges der @@n_fs@@ Spike-Peptide. Bei
+1,18\,Mrd.\ Sequenzen tritt nicht einmal ein \emph{zufälliger}
+Volllängentreffer auf -- bei Peptiden ab etwa 12\,aa ist der Sequenzraum
+($20^{12} \approx 4 \cdot 10^{15}$) dafür zu groß. Das bestätigt den Befund der
+Autoren mit unabhängigen Daten und einem anderen Werkzeug: die +1-Produkte sind
+Artefakte der codon-optimierten Impfstoffsequenz und haben in der Natur kein
+Gegenstück.
+
+Methodische Grenze: DIAMOND ist ein Seed-and-Extend-Verfahren und für sehr
+kurze Queries nicht die empfindlichste Wahl. Für die kürzesten Peptide des
+Pools (\texttt{WSQSCCVA} und \texttt{PQRSCLCP}, je 8\,aa;
+\texttt{PRMCCTRTR}, 9\,aa) kann ein exakter Treffer theoretisch durch das
+Seed-Raster fallen. Für die Fragestellung ist das unerheblich: ein
+8-mer-Treffer wäre Zufall und kein Beleg für Existenz.
+
+\section{Clusterlauf: gruppieren die Peptide mit etwas Menschlichem?}
+
+Die exakte Suche beantwortet nur, ob eine Sequenz \emph{identisch} vorkommt.
+Die schwächere Frage -- ob ein Peptid mit einem menschlichen Protein
+\emph{verwandt} genug ist, um mit ihm in einer Gruppe zu landen -- beantwortet
+ein Clusterlauf.
+
+Das bricht bewusst die stehende Regel von
+\texttt{pipeline/nr\_cluster\_daily.py} (``new sequences are compared only with
+each other, not with the rest of nr''). Die Peptide stehen in keiner
+nr-Ausgabe, der tägliche Lauf um 05:30 würde sie also nie anfassen. Der
+Gegenpart wurde auf \emph{Homo sapiens} beschränkt (taxid 9606,
+2\,285\,891 Sequenzen aus 3\,630\,866 Accessions), was den Lauf bezahlbar hält
+und genau die interessierende Frage trifft.
+
+Zwei Ebenen wie im Tageslauf, 90\,\% und darauf 50\,\% Identität. Ein
+Parameter musste abweichen: der Tageslauf nutzt \texttt{-{}-cov-mode 1}
+(Abdeckung des Targets), womit ein 15\,aa-Peptid niemals zu einem 550\,aa-Protein
+gehören kann, weil 80\,\% des Proteins abgedeckt sein müssten. Hier steht
+\texttt{-{}-cov-mode 2} (Abdeckung der kürzeren Sequenz), damit ein Peptid
+überhaupt Mitglied werden \emph{kann}. Mit \texttt{-{}-cov-mode 1} wäre jedes
+Peptid konstruktionsbedingt ein Einzelgänger -- ein Ergebnis ohne Aussage.
+
+In \texttt{blast\_cluster} und \texttt{blast\_cluster\_rep} wurde nichts
+geschrieben: diese Tabellen sind über \texttt{(oid, part)} verschlüsselt und
+tragen die Semantik eines Tagesupdates. Dies hier ist eine Auswertung, ihr
+Ergebnis liegt als TSV.
+
+@@cluster_section@@
+
+\section{Das ähnlichste Protein in der ganzen nr}
+\label{sec:aehnlich}
+
+Die Exaktsuche beantwortet nur ja/nein. Die naheliegende Anschlussfrage --
+\emph{was ist das Ähnlichste, was nr überhaupt zu bieten hat} -- lässt sich aus
+denselben Rohdaten beantworten, ohne neuen Lauf: bester HSP je Peptid, sortiert
+nach Bitscore.
+
+Von den 123 Spike-Peptiden haben \textbf{acht} überhaupt irgendeinen Treffer,
+115 gar keinen. Und die fünf besten gehören zusammen:
+
+\begin{center}
+\footnotesize
+\begin{tabular}{llrrrl}
+\toprule
+Peptid & Abdeckung & Ident. & Bits & E-Wert & Subject \\
+\midrule
+\texttt{fs116} & 17/18 & 94{,}1\,\% & 42{,}0 & 4{,}5e--03 & \texttt{AAG23172.1} \emph{Homo sapiens} \\
+\texttt{fs119} & 17/18 & 100\,\% & 41{,}6 & 6{,}4e--03 & \texttt{AAG23172.1} \emph{Homo sapiens} \\
+\texttt{fs118} & 17/17 & 88{,}2\,\% & 39{,}3 & 4{,}8e--02 & \texttt{AAG23172.1} \emph{Homo sapiens} \\
+\texttt{fs117} & 16/17 & 93{,}8\,\% & 37{,}4 & 2{,}7e--01 & \texttt{AAG23172.1} \emph{Homo sapiens} \\
+\texttt{fs120} & 15/18 & 100\,\% & 35{,}4 & 1{,}5e+00 & \texttt{AAG23172.1} \emph{Homo sapiens} \\
+\midrule
+\texttt{fs082} & 15/15 & 66{,}7\,\% & 28{,}9 & 5{,}0e+02 & \texttt{KAF9461180.1} \emph{Collybia nuda} \\
+\texttt{fs025} & 18/18 & 50{,}0\,\% & 28{,}5 & 8{,}1e+02 & \texttt{CEM26774.1} \emph{Chromera velia} \\
+\texttt{fs006} & 15/15 & 66{,}7\,\% & 28{,}1 & 9{,}2e+02 & \texttt{KAF2594081.1} \emph{Brassica cretica} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Die unteren drei sind Rauschen: E-Werte von 500 bis 900, also reine
+Zufallsähnlichkeit. Die oberen fünf sind es nicht. \texttt{fs116} bis
+\texttt{fs120} sind fünf aufeinander folgende, überlappende Peptide des Pools;
+aneinandergelegt ergeben sie einen zusammenhängenden Abschnitt von 50 Resten:
+
+\begin{center}
+\texttt{SSWYCMHAMLAAPFPSWVPRVSPDLGSQVCSHLHLPHSPPLLVPDTSQAR}
+\end{center}
+
+Gegen \texttt{AAG23172.1} (\emph{Homo sapiens}, 103\,aa, Gen \texttt{PP2150},
+Titel schlicht ``unknown'') ausgerichtet, ohne Lücken:
+
+\begin{lstlisting}
+ +1                                       SSWYCMHAMLAAPFPSWVPRVSPD
+                                           | |||||||||||||||| |||||
+AAG   MGDQVPREQDLAKRSSPGPSPVLNMCNRQSAWATALSPWYCMHAMLAAPFPSWAPRVSPD
+
+ +1   LGSQVCSHLHLPHSPPLLVPDTSQAR
+        ||||||||||||||||||||||
+AAG   PGSQVCSHLHLPHSPPLLVPDTSTPTWSSPIAHKRGGTRDELS
+\end{lstlisting}
+
+\textbf{44 von 50 Resten identisch, 88\,\%.} Bei 1,18\,Mrd.\ Sequenzen ist das
+kein Zufall, und es widerspricht auf den ersten Blick allem Übrigen in diesem
+Bericht.
+
+\subsection{Auflösung: das ist gar kein Spike}
+
+\texttt{AAG23172.1} stammt aus \texttt{AF269289.1}, einer 1035\,bp
+``Homo sapiens PP2150 mRNA'', eingereicht am 17.05.2000 vom Shanghai Cancer
+Institute, unveröffentlicht, Produkt ``unknown'', Vermerk \emph{``Method:
+conceptual translation supplied by author''}. Das Protein ist also selbst nur
+ein vom Einreicher geratener Leserahmen.
+
+Entscheidend sind die Nukleotide. Die 150\,bp von \texttt{AF269289.1}, die
+den übereinstimmenden Proteinabschnitt kodieren (nt 665--814), wurden gegen die
+mRNA von \emph{TLE5} (früher \emph{AES}) geprüft:
+
+\begin{lstlisting}
+NM_198969.1  TLE5 transcript variant 1, 1754 nt
+  laengste exakt uebereinstimmende Teilsequenz: 150 von 150 nt, ab Position 1216
+\end{lstlisting}
+
+Vollständig identisch, im 3'-untranslatierten Bereich von \emph{TLE5}. Und
+genau dort liegt die Erklärung: das 3'-UTR von BNT162b2 ist nicht erfunden,
+sondern aus \textbf{menschlichen} Bausteinen zusammengesetzt -- dem 3'-UTR der
+humanen \emph{AES/TLE5}-mRNA und einem Element der mitochondrialen
+12S-rRNA (\emph{mtRNR1}). Beides wird unten direkt an der Kassette belegt.
+
+Damit löst sich der Widerspruch auf: \texttt{fs116}--\texttt{fs120} stammen
+überhaupt nicht aus dem Spike-Leserahmen. Sie entstehen, wenn das verschobene
+Ribosom über das Spike-Stoppcodon hinaus in das 3'-UTR hineinliest -- und dort
+übersetzt es \emph{menschliche} Sequenz. Die alte PP2150-Einreichung enthält
+denselben \emph{AES}-Abschnitt im selben Raster, deshalb stimmen beide
+``Proteine'' überein. Die verbleibenden 12\,\% Unterschied gehen auf die
+Abwandlungen des UTR im Impfstoffkonstrukt zurück.
+
+\subsection{Gegenprobe an der Konstruktsequenz}
+
+Diese Erklärung wurde nicht bei der Plausibilität belassen, sondern direkt
+geprüft. GenBank führt die Kassette als \texttt{PP544446} (``Vector BNT162b2
+clone Vacc\_Batch\_FP9359'', 7692\,bp, hinterlegt 2024); die Spike-CDS liegt
+dort auf nt 3578--7399 und übersetzt sich korrekt zu
+\texttt{MFVFLVLLPLVS...KLHYT*}, 1273\,aa plus Stopp.
+
+Jedes der 123 Peptide wurde im +1-Rahmen \emph{relativ zum Startcodon} gesucht
+und seine Nukleotidposition bestimmt:
+
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+Lage im Konstrukt & Peptide \\
+\midrule
+innerhalb der Spike-CDS & 113 \\
+\textbf{3'-UTR, hinter dem Spike-Stoppcodon} & \textbf{7} \\
+5'-UTR, vor dem Startcodon & 1 \\
+\midrule
+exakt wiedergefunden & 121 von 123 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Die sieben Peptide hinter dem Stoppcodon sind \texttt{fs116} bis
+\texttt{fs122}, gestaffelt von +5 bis +215\,nt hinter dem Spike-Ende; das eine
+davor ist \texttt{fs001} im 5'-UTR. Es sind also \textbf{acht} der 123
+Pool-Peptide, die gar nicht aus dem Spike-Leserahmen stammen -- einer mehr als
+die fünf, die über den Datenbanktreffer auffielen.
+
+Zuletzt die 3'-Region selbst. Bildet man die 293\,nt hinter dem Stoppcodon auf
+die beiden in Frage kommenden Quellen ab, löst sich alles auf:
+
+\begin{center}
+\begin{tabular}{llr}
+\toprule
+3'-Region & Quelle & exakte Übereinstimmung \\
+\midrule
+nt 10--56 & \emph{TLE5}/\emph{AES} \texttt{NM\_198969.1} ab 1221 & 47\,nt \\
+nt 79--145 & \emph{TLE5}/\emph{AES} \texttt{NM\_198969.1} ab 1290 & 67\,nt \\
+nt 146--284 & mtRNR1 \texttt{NC\_012920.1} ab 112 & 139\,nt \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Beide menschlichen Elemente sind damit direkt in der Kassette nachgewiesen und
+nicht nur zitiert: vorn das \emph{AES}-Element, dahinter das mitochondriale
+12S-Element. Die Lücken zwischen den Blöcken entsprechen den Abwandlungen im
+Konstrukt.
+
+Legt man die sieben Peptide auf diese Karte, lässt sich jedes zuordnen:
+\texttt{fs116} (+5\,nt) bis \texttt{fs120} (+101\,nt) liegen im
+\emph{AES}-Teil -- deshalb treffen sie den \emph{AES}-stämmigen Eintrag
+\texttt{AAG23172.1}; \texttt{fs121} (+125\,nt) liegt auf der Nahtstelle, und
+\texttt{fs122} (+215\,nt) im mitochondrialen Element. Das achte Peptid,
+\texttt{fs001}, liegt vorn im 5'-UTR.
+
+Die Kette ist damit geschlossen und an jedem Glied belegt: Peptide
+\texttt{fs116}--\texttt{fs122} liegen hinter dem Spike-Stopp $\rightarrow$ dort
+steht das humane \emph{AES/TLE5}-Element $\rightarrow$ dessen +1-Übersetzung
+ist zu 88\,\% identisch mit einem menschlichen GenBank-Eintrag, dessen
+kodierende Nukleotide ihrerseits zu 150/150 aus \emph{TLE5} stammen.
+
+\subsection*{Zur Genauigkeit der Abschrift}
+
+Die Gegenprobe prüft nebenbei die Abschrift aus dem Tabellenbild mit: 121 der
+123 Peptide wurden buchstabengenau in der Kassette wiedergefunden. Bei
+\texttt{fs007}, \texttt{fs008}, \texttt{fs039} und \texttt{fs123} fehlt jeweils
+ein einzelner Rest zur vollständigen Übereinstimmung (längste vorhandene
+Teilsequenz 11 bis 15\,aa). Bei \texttt{fs039} ist das genau die oben
+erwähnte, in der Publikation selbst angelegte Inkonsistenz: vorhanden ist
+\texttt{PGTGSGSAIAW}, gedruckt ist \texttt{LCTPPGTGSGSAIAW} mit einem
+\texttt{P} zu viel. Die übrigen drei dürften Lesefehler aus dem Tabellenbild
+sein. Für das Ergebnis ist das ohne Belang: alle vier gehören zur
+Spike-Gruppe, die ohnehin keinen Treffer hat.
+
+\subsection{Was daraus für die Ausgangsbehauptung folgt}
+
+Die Formulierung ``völlig neuartige Proteine, meilenweit entfernt vom Spike und
+von anderen humanen Proteinen'' trifft zu -- aber nicht überall, und die
+Ausnahme ist die interessantere Hälfte:
+
+\begin{itemize}
+\item \textbf{Meilenweit vom Spike entfernt: zutreffend, und zwar zwangsläufig.}
+      Ein um eine Base verschobener Leserahmen teilt mit dem ursprünglichen
+      Protein keinen einzigen Rest; dieselben Nukleotide ergeben in neuer
+      Gruppierung völlig andere Codons. Das ist keine Beobachtung, sondern
+      Arithmetik.
+\item \textbf{Neuartig: zutreffend für 115 der 123 Peptide.} Sie kommen in
+      1,18\,Mrd.\ Sequenzen nirgends vor, auch nicht entfernt ähnlich.
+\item \textbf{Fern von allem Menschlichen: nicht durchgängig.} Acht der 123
+      Peptide stammen gar nicht aus dem Spike-Leserahmen, sieben davon aus dem
+      3'-UTR; sie sind im Gegenteil nahezu wörtlich menschlich, weil der
+      Impfstoff dort menschliche Bausteine verwendet. Nicht das Ribosom
+      erfindet hier etwas, es liest bloß weiter.
+\end{itemize}
+
+Zur Vorsicht mahnt noch etwas anderes: diese acht Peptide waren Teil des
+ELISpot-Pools. Eine T-Zell-Antwort gegen sie wäre nicht gegen ein
+körperfremdes Produkt gerichtet, sondern gegen ein Peptid aus körpereigener
+UTR-Sequenz. Das Paper erörtert diesen Punkt nicht; die Einzelantworten je
+Peptid wurden nicht erhoben, Pools unterscheiden das nicht.
+
+\subsection{Aminosäurezusammensetzung}
+
+Warum die übrigen Peptide nirgends vorkommen, zeigt ihre Zusammensetzung. Über
+alle 123 Peptide (1983 Reste):
+
+\begin{center}
+\begin{tabular}{lrlr}
+\toprule
+Rest & Anteil & Rest & Anteil \\
+\midrule
+S & 15{,}7\,\% & C & 7{,}3\,\% \\
+P & 14{,}8\,\% & R & 6{,}4\,\% \\
+T & 13{,}5\,\% & W & 4{,}7\,\% \\
+A & 12{,}8\,\% & D+E & 2{,}4\,\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+S, P, T, A und C stellen zusammen \textbf{64\,\%} aller Reste; in gewöhnlichen
+Proteomen sind es rund 30\,\%. Cystein ist etwa dreifach angereichert,
+Tryptophan ebenso, während die sauren Reste Asparaginsäure und Glutaminsäure
+auf ein Fünftel des Üblichen fallen und Tyrosin mit 3 von 1983 Resten praktisch
+fehlt. Das ist keine Proteinzusammensetzung, sondern niedrigkomplexe,
+prolin- und cysteinreiche Sequenz -- die unvermeidliche Folge davon, dass ein
+GC-reich codon-optimiertes Gen um eine Base verschoben gelesen wird. Solche
+Sequenzen falten schlecht und haben in der Natur kein Gegenstück; dass nr
+nichts dazu kennt, ist danach keine Überraschung mehr.
+
+\section{Was dieser Lauf der Studie hinzufügt, und was nicht}
+
+Der Mehrwert gegenüber der Publikation ist klein, und es wäre unredlich, ihn
+größer darzustellen. Die Autoren haben den Datenbankabgleich selbst gemacht
+(Extended Data Fig.~4). Was hier dazukommt:
+
+\begin{itemize}
+\item \textbf{Anderes Werkzeug, größerer Bezugsrahmen.} Das Paper vergleicht
+      per BLASTP den BNT162b2-+1-Rahmen gegen den +1-Rahmen des Wildtyp-S-Gens
+      -- also zwei Sequenzen gegeneinander. Hier läuft DIAMOND gegen die
+      \emph{ganze} nr in ihrem heutigen Stand: 1,18\,Mrd.\ Sequenzen,
+      Teil-DBs gebaut am Berichtstag, NCBI-Stand 23.11.2026.
+\item \textbf{Nachprüfbares Kriterium statt Abbildung.} Statt eines
+      Alignment-Bildes ein maschinell prüfbarer Filter: volle Peptidlänge bei
+      100\,\% Identität, ja oder nein.
+\item \textbf{Positivkontrolle.} Das Paper führt keine mit. Hier zeigen die
+      In-Frame-Luciferase-Peptide, dass der Aufbau Treffer auch findet; ohne
+      sie wäre das negative Ergebnis wertlos.
+\item \textbf{Eine Frage, die das Paper nicht stellt.} Der Clusterlauf prüft
+      nicht nur Identität, sondern entfernte Ähnlichkeit zum menschlichen
+      Proteom.
+\item \textbf{Ein Befund, der im Paper fehlt.} Acht der 123 Peptide des
+      ELISpot-Pools stammen nicht aus dem Spike-Leserahmen, sondern aus den
+      UTR des Konstrukts, sieben davon aus dem menschlichen
+      \emph{AES/TLE5}-Element im 3'-UTR (Abschnitt~\ref{sec:aehnlich}). Das
+      ist mehr als eine Fußnote: eine T-Zell-Antwort gegen diese fünf wäre
+      nicht gegen ein fremdes, sondern gegen ein körpereigenes Peptid
+      gerichtet. Da die Antworten nur als Pool gemessen wurden, lässt sich
+      nachträglich nicht trennen, welcher Anteil der berichteten Reaktivität
+      darauf entfällt.
+\item \textbf{Laufzeiten und Befehle offengelegt}, siehe Anhang.
+\end{itemize}
+
+Was \textbf{nicht} dazukommt: keine neue Biologie, keine Aussage über Risiko
+oder Verträglichkeit, keine eigene Messung der Rutschrate, keine klinische
+Einordnung. Bestätigt wird ein negatives Ergebnis, das ohnehin zu erwarten war
+-- nr enthält keine Mistranslationsprodukte, weil niemand sie einreicht. Der
+Beitrag ist Nachprüfbarkeit, nicht Erkenntnis.
+
+\section{Peptidliste: +1FS Spike (Extended Data Table 3)}
+
+\footnotesize
+@@peptides@@
+\normalsize
+
+\section{Anhang: die ausgeführten Abfragen}
+
+Alles Folgende ist der Stand, der die Zahlen dieses Berichts erzeugt hat.
+Skripte und Rohausgaben liegen im Repo \texttt{gerontec/blastDiamond} unter
+\texttt{examples/frameshift\_m1psi/}.
+
+\subsection*{A.1 Aufruf}
+
+\begin{lstlisting}
+fs_peptide_search.py /tmp/fs_all.fa /tmp/fs_all_out --mode fast
+\end{lstlisting}
+
+\subsection*{A.2 Die DIAMOND-Abfrage, je Teil-DB einmal}
+
+\begin{lstlisting}
+diamond blastp \
+  -d ~/diamond/parts/<part>.dmnd \
+  -q /tmp/fs_all.fa \
+  -o <out_dir>/<part>.tsv \
+  --outfmt 6 qseqid sseqid pident length qlen slen qstart qend \
+             sstart send evalue bitscore staxids \
+  --evalue 1000 --max-target-seqs 50 \
+  --threads 20 --block-size 2 --index-chunks 1 \
+  --dbsize @@dbsize@@
+\end{lstlisting}
+
+\texttt{-{}-dbsize} ist die Summe der Buchstaben über alle sechs Teile, damit
+die E-Werte denen einer Suche gegen die ganze nr entsprechen. Sie stammt aus:
+
+\begin{lstlisting}
+SELECT SUM(letters) FROM blast_part;
+\end{lstlisting}
+
+Die Empfindlichkeitskontrolle auf \texttt{p1\_mammalia} lief mit denselben
+Feldern, aber:
+
+\begin{lstlisting}
+  --ultra-sensitive --masking 0 --comp-based-stats 0 --evalue 10000
+\end{lstlisting}
+
+\subsection*{A.3 Laufzeitmessung}
+
+Gemessen wird die Wanduhrzeit des Kindprozesses, nicht die Selbstauskunft von
+DIAMOND:
+
+\begin{lstlisting}
+t0 = time.monotonic()
+p  = subprocess.run(cmd, capture_output=True, text=True)
+dt = time.monotonic() - t0
+\end{lstlisting}
+
+\subsection*{A.4 Exaktheitsfilter}
+
+Aus der Rohausgabe wird nur übernommen, was das ganze Peptid buchstabengenau
+abdeckt:
+
+\begin{lstlisting}
+if float(c[2]) == 100.0 and int(c[3]) == int(c[4]):   # pident, length == qlen
+\end{lstlisting}
+
+\subsection*{A.5 Metadaten-Join gegen die wagodb}
+
+Für jede Accession aus dem Exaktheitsfilter, in Blöcken zu 200:
+
+\begin{lstlisting}
+SELECT a.acc, a.taxid, s.len, s.title, t.name, t.rank
+  FROM blast_acc  a
+  JOIN blast_seq  s ON s.oid   = a.oid
+  LEFT JOIN blast_taxon t ON t.taxid = a.taxid
+ WHERE a.acc IN (%s, %s, ...);
+\end{lstlisting}
+
+Zu beachten: \texttt{blast\_acc} hält eine Zeile je Defline, zusammengefasste
+Einträge haben also mehrere Accessions und Taxa je OID. Die von DIAMOND
+gemeldete \texttt{staxids} kann daher von der hier verbundenen
+\texttt{taxid} abweichen -- genau das ist beim Treffer
+\texttt{WP\_212371658.1} der Fall (DIAMOND meldet 10090, die Tabelle führt 2).
+
+\subsection*{A.6 Vorbereitende Abfragen}
+
+Bestand und Zuschnitt der Teil-DBs:
+
+\begin{lstlisting}
+SELECT * FROM blast_part;
+\end{lstlisting}
+
+Grobe Vorabprüfung, ob überhaupt etwas Einschlägiges in nr steht
+(\emph{synthetic construct} 32630, SARS-CoV-2 2697049, Wuhan-Isolat 694009):
+
+\begin{lstlisting}
+SELECT taxid, COUNT(*) FROM blast_acc
+ WHERE taxid IN (2697049, 32630, 694009) GROUP BY taxid;
+-- 32630: 149 433 | 694009: 886 | 2697049: 7 134 543
+\end{lstlisting}
+
+Diese Zählung beantwortet die Ausgangsfrage allerdings nicht: Titel und Taxon
+sagen nichts darüber, ob eine \emph{Sequenz} vorkommt. Dafür war die
+Peptidsuche nötig.
+
+\section{Anhang B: vollständige Reproduktion, Schritt für Schritt}
+
+Alles Folgende ist von Grund auf nachvollziehbar. Benötigt werden nur
+\texttt{curl}, \texttt{python3}, \texttt{pdflatex}, DIAMOND, MMseqs2 und ein
+Zugang zur nr. Die Skripte liegen im Repo \texttt{gerontec/blastDiamond} unter
+\texttt{examples/frameshift\_m1psi/}.
+
+\subsection*{B.1 Quelltexte beschaffen}
+
+\begin{lstlisting}
+# Volltext des Papers (JATS-XML)
+curl -o pmc.xml "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi\
+?db=pmc&id=10764286&rettype=xml"
+
+# Extended Data Table 3 (die 123 Peptide) und Table 1 (MS-Peptide) als Bild
+B=https://media.springernature.com/full/springer-static/esm/\
+art%3A10.1038%2Fs41586-023-06800-3/MediaObjects
+curl -o Tab3.jpg "$B/41586_2023_6800_Tab3_ESM.jpg"   # 1398x2521
+curl -o Tab1.jpg "$B/41586_2023_6800_Tab1_ESM.jpg"   # 2126x1065
+\end{lstlisting}
+
+Die Tabellen liegen ausschließlich als Rasterbild vor; die Peptide mussten
+daraus abgeschrieben werden. Die Spalten wurden dafür einzeln vergrößert:
+
+\begin{lstlisting}
+convert Tab3.jpg -crop 380x830+618+1690 +repage -resize 300% c3.png
+convert Tab3.jpg -crop 420x880+978+0    +repage -resize 300% c4a.png
+convert Tab3.jpg -crop 420x880+978+860  +repage -resize 300% c4b.png
+\end{lstlisting}
+
+\subsection*{B.2 Abschrift prüfen, bevor sie verwendet wird}
+
+Der Pool ist überlappend aufgebaut, benachbarte Peptide teilen Reste, solange
+sie zum selben +1-Abschnitt gehören. Das ergibt eine Selbstkontrolle:
+
+\begin{lstlisting}
+check_overlap.py          # 123 Peptide, 8-18 aa, keine Dubletten,
+                          # 41 Abbruchstellen = 42 +1-Abschnitte,
+                          # 81 Uebergaenge passen buchstabengenau
+\end{lstlisting}
+
+\subsection*{B.3 Abfragedatei bauen}
+
+\begin{lstlisting}
+{ awk '{printf ">fs%03d_spike1FSpred\n%s\n",      NR, $0}' fs_peptides.txt
+  awk '{printf ">ms%02d_fluc1FS_msproven\n%s\n",  NR, $0}' set2.txt
+  awk '{printf ">ct%02d_fluc_inframe_control\n%s\n", NR, $0}' set3.txt
+} > fs_all.fa          # 123 + 9 + 6 = 138 Sequenzen
+\end{lstlisting}
+
+\subsection*{B.4 Suche und Clusterlauf}
+
+\begin{lstlisting}
+fs_peptide_search.py  fs_all.fa  out_dir  --mode fast
+fs_peptide_search.py  fs_all.fa  out_ultra --mode ultra p1_mammalia   # Kontrolle
+fs_peptide_cluster.py fs_all.fa  cluster_out --taxid 9606 --threads 20
+best_hits.py          out_dir
+\end{lstlisting}
+
+\subsection*{B.5 Den auffälligen Treffer aufklären}
+
+\begin{lstlisting}
+# 1. das Protein hinter dem besten Treffer
+curl -o aag.gp "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi\
+?db=protein&id=AAG23172.1&rettype=gp&retmode=text"
+#    -> 103 aa, Gen PP2150, "unknown", coded_by AF269289.1:557..868
+
+# 2. die zugehoerige mRNA
+curl -o af269289.gb "...efetch.fcgi?db=nuccore&id=AF269289.1&rettype=gb"
+
+# 3. fs116..fs120 auf ihren Ueberlappungen zusammenlegen und ausrichten
+align_aag.py        # 50 aa, bester lueckenloser Versatz 36: 44/50 = 88 %
+
+# 4. die kodierenden 150 nt (nt 665..814) gegen TLE5/AES
+curl -o tle5.fna "...efetch.fcgi?db=nuccore&id=2462563547,39812018&rettype=fasta"
+test_aes.py         # NM_198969.1: 150 von 150 nt identisch ab Position 1216
+\end{lstlisting}
+
+Achtung bei Schritt 4: \texttt{NM\_005938} ist \emph{nicht} AES, sondern
+FOXO4. Die richtige Kennung findet man über
+\texttt{esearch.fcgi?db=nuccore\&term=TLE5[gene]+AND+"Homo sapiens"[orgn]\
++AND+biomol\_mrna[prop]+AND+srcdb\_refseq[prop]}.
+
+\subsection*{B.6 Gegenprobe an der Konstruktsequenz}
+
+\begin{lstlisting}
+curl -o bnt.gb "...efetch.fcgi?db=nuccore&id=PP544446&rettype=gb&retmode=text"
+verify_utr.py       # Spike-CDS 3578..7399, +1-Rahmen ab Startcodon
+                    # 113 Peptide in der CDS, 7 im 3'-UTR, 1 im 5'-UTR
+\end{lstlisting}
+
+Zwei Fallstricke, die beim Nachbauen Zeit kosten:
+
+\begin{enumerate}
+\item Beim Einlesen der GenBank-Datei dürfen aus dem \texttt{ORIGIN}-Block
+      \emph{alle} Buchstaben übernommen werden, nicht nur \texttt{ACGTN}.
+      Filtert man IUPAC-Mehrdeutigkeitscodes weg, fehlen hier fünf Basen
+      (7687 statt 7692\,bp) und der Leserahmen ist verschoben -- die CDS
+      übersetzt sich dann zu \texttt{SCSWCCCLWCPA...} statt
+      \texttt{MFVFLVLLPLVS...}, was als Fehler leicht zu übersehen ist, weil
+      es wie ein +1-Produkt aussieht.
+\item Der gesuchte +1-Rahmen ist der gegenüber dem \emph{Startcodon}
+      verschobene, nicht der gegenüber dem Vektoranfang. Mit dem falschen
+      Bezugspunkt findet man null von 123 Peptiden.
+\end{enumerate}
+
+\subsection*{B.7 Zusammensetzung und Bericht}
+
+\begin{lstlisting}
+composition.py                       # S+P+T+A+C = 64 % der Reste
+fs_report_pdf.py out_dir fs_all.fa Frameshift.pdf cluster_out
+\end{lstlisting}
+
+\subsection*{B.8 Verwendete Kennungen auf einen Blick}
+
+\begin{center}
+\footnotesize
+\begin{tabular}{lll}
+\toprule
+Kennung & Was & Wozu \\
+\midrule
+PMC10764286 / PMID 38057663 & Mulroney et al., Nature 625 & Quelle \\
+PMID 38867495 & Boros et al., Review & angebliche Folgestudie \\
+\texttt{PP544446} & BNT162b2-Kassette, 7692\,bp & Gegenprobe \\
+\texttt{AAG23172.1} / \texttt{AF269289.1} & PP2150, ``unknown'' & bester Treffer \\
+\texttt{NM\_198969.1} & TLE5 / AES mRNA & Herkunft des 3'-UTR \\
+\texttt{NC\_012920.1}:648--1601 & mtRNR1 / 12S & zweites UTR-Element \\
+\texttt{MSV000093074}, \texttt{GSE223044} & MS- und RNA-seq-Daten & Hinterlegung \\
+\texttt{P08659} & Firefly-Luciferase & Positivkontrolle \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\end{document}

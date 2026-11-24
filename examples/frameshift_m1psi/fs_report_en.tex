@@ -1,0 +1,598 @@
+
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage[margin=2.3cm]{geometry}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{lmodern}
+\usepackage[protrusion=true,expansion=false]{microtype}
+\usepackage[hidelinks]{hyperref}
+\usepackage{parskip}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0.4pt}
+\fancyfoot[L]{\footnotesize\href{https://github.com/gerontec/blastDiamond}%
+{\texttt{github.com/gerontec/blastDiamond}}}
+\fancyfoot[R]{\footnotesize\thepage}
+\fancypagestyle{plain}{\fancyhf{}%
+  \renewcommand{\headrulewidth}{0pt}\renewcommand{\footrulewidth}{0.4pt}%
+  \fancyfoot[L]{\footnotesize\href{https://github.com/gerontec/blastDiamond}%
+  {\texttt{github.com/gerontec/blastDiamond}}}%
+  \fancyfoot[R]{\footnotesize\thepage}}
+\usepackage{listings}
+\lstset{basicstyle=\ttfamily\scriptsize, breaklines=true,
+        breakatwhitespace=false, columns=fullflexible,
+        frame=single, framesep=4pt, xleftmargin=0pt,
+        postbreak=\mbox{\textcolor{gray}{$\hookrightarrow$}\space}}
+\usepackage{xcolor}
+\setlength{\emergencystretch}{3em}
+\sloppy
+
+\title{\textbf{Where the +1 frameshift peptides of BNT162b2 come from}\\[2mm]
+\large A database check of Extended Data Table 3 of Mulroney et al.,
+Nature 625, 189--194 (2024)}
+\author{Analysis on a local mirror of NCBI nr, six DIAMOND part databases}
+\date{@@datum@@}
+
+\begin{document}
+\maketitle
+
+\section*{Summary}
+
+This note reports an incidental finding. The starting question was narrow and
+expected a negative answer: are the +1 frameshifted products described by
+Mulroney et al.\footnote{Mulroney, T.E. \emph{et al.}
+\emph{N1-methylpseudouridylation of mRNA causes +1 ribosomal frameshifting},
+Nature \textbf{625}, 189--194 (2024),
+\href{https://doi.org/10.1038/s41586-023-06800-3}{10.1038/s41586-023-06800-3}.}
+present anywhere in NCBI nr? They are not, as the paper itself already
+indicates. While answering it, something else turned up.
+
+\begin{quote}
+\textbf{Eight of the 123 peptides in the +1FS spike ELISpot pool do not come
+from the spike reading frame at all.} Seven lie downstream of the spike stop
+codon, in the human \emph{AES/TLE5}-derived element of the vaccine's 3' UTR,
+and one lies upstream of the start codon in the 5' UTR. Their +1 translation
+is therefore human sequence, which is why one of them matches a human GenBank
+entry at 88\,\% identity over 50 residues.
+\end{quote}
+
+If this is right, a T-cell response measured against those pool members would
+be directed at a peptide of host-derived sequence rather than at a foreign
+product. Because responses were recorded per pool and not per peptide, the two
+cannot be separated after the fact. We do not know whether this was intended,
+and we may have missed a place where the paper addresses it.
+
+Everything below is reproducible from public data; Appendix~B gives the exact
+commands, accessions and two pitfalls that cost us time.
+
+\section*{Provenance}
+
+The analysis was carried out by Claude Opus 5, an AI assistant, working
+against a locally mirrored NCBI nr. The finished document was then checked by
+Claude Opus 5.5, which re-derived the numerical claims from the stored outputs
+and corrected two of them: the count of genuinely novel peptides (115, not
+118, once the eight UTR peptides are excluded) and the description of the 3'
+UTR, where the mitochondrial element had been cited rather than verified and
+the \emph{AES} element was mapped incompletely. Both corrections are
+incorporated above.
+
+It has not been reviewed by a domain expert and is not a manuscript. We are
+sending it because the 3' UTR observation seemed worth a few minutes of the
+authors' attention, not to make a claim about safety, which this work does not
+address. If the point is already known or mistaken, please disregard it.
+
+\section{What the paper reports}
+
+\subsection{Mechanism}
+
+N1-methylpseudouridine (m1$\Psi$) slows elongation and makes the ribosome slip
+by one base at \emph{slippery sites}, defined in the paper as
+\[
+\text{m1}\Psi\;\text{m1}\Psi\;\text{m1}\Psi\;X,
+\qquad X \in \{\text{m1}\Psi,\ \text{C}\},
+\]
+with $X$ the first nucleotide of the immediately downstream codon. Three such
+sites exist in the Fluc reporter; site A precedes a +1 stop codon and
+contributes nothing, while mutants U*187C and U*208C (sites B and C) strongly
+reduce frameshifting and the double mutant abolishes it. Six identical sites
+are distributed over the BNT162b2 spike CDS (Extended Data Fig.~6). The rate
+is about 8\,\% in the reporter.
+
+\subsection{Evidence in humans}
+
+IFN$\gamma$ ELISpot on PBMC from 21 BNT162b2-vaccinated against 20
+ChAdOx1-vaccinated donors, stimulated with the +1FS peptide pool. The response
+is raised only after BNT162b2 ($P = 0.0233$, one-tailed Welch); in mice the
+separation is clearer ($P = 0.0005$ against untreated).
+
+\subsection{Sample selection and response rate}
+
+Not randomised. The samples are a convenience set from four existing UK
+collections: NIHR National BioResource (REC 17/EE/0025), PITCH as a substudy
+of SIREN (IRAS 284460, ISRCTN11041050), a Liverpool protocol (16/NW/0170) and
+the Oxford GI Biobank (16/YH/0247). For the animals the paper states it
+plainly: \emph{``Mice were not randomly assigned to groups and experimenters
+were not blinded''} ($n = 8$ per group).
+
+Extended Data Fig.~2 encodes the per-donor outcome in the sample IDs, with a
+threshold of $> 40$\,SFU/million. Counting them gives five responders
+(155, 105, 51.7, 43 and 40 SFU/million) against 15 below threshold, i.e.\ a
+response rate of about $5/21 \approx 24\,\%$. Two details are visible in that
+figure: Donor-13 at exactly 40 does not clear its own ``$> 40$'' threshold yet
+is flagged as a responder, and with five responders of 21 the one-tailed
+$P = 0.0233$ rests on a narrow base.
+
+\subsection{Degradation and inflammatory markers}
+
+A full-text scan returns no occurrence of \texttt{degrad*},
+\texttt{proteasom*}, \texttt{inflammat*}, \texttt{half-life} or
+\texttt{misfold*}. There is no degradation kinetics, no CRP or IL-6 data and
+no time course. Indirectly the ELISpot response does establish that the
+products are degraded at all, since MHC-I presentation requires proteasomal
+processing; it says nothing about how fast. A PubMed query
+\texttt{frameshift AND (BNT162b2 OR N1-methylpseudouridine)} returns exactly
+one record, the paper itself.
+
+\section{Why nr holds no such product}
+
+The \texttt{taxid} in nr describes the origin of the \emph{coding sequence},
+not the cell that synthesised the protein. nr is a collection of submitted
+records, and the taxon comes from the submitter's \texttt{/organism}
+qualifier. A mistranslation product is coded by a synthetic, codon-optimised
+construct; it is a translation error rather than a gene product, as the
+authors establish by RNA-seq (Extended Data Table~2); and nobody submits one.
+Only MassIVE \texttt{MSV000093074}, GEO \texttt{GSE223044} and figshare
+\texttt{10.6084/m9.figshare.24271744} are deposited. The authors already
+checked the database question themselves in Extended Data Fig.~4.
+
+\section{The search}
+
+\subsection{Query set}
+
+@@class_summary@@
+
+The positive control carries the design: firefly luciferase is in nr
+(\texttt{P08659}, 550\,aa), so if its in-frame peptides are not recovered, the
+search is misconfigured and a negative result means nothing.
+
+The 123 peptides had to be transcribed from the raster image of Extended Data
+Table~3. The pool is built from overlapping walks, which gives a
+self-check: 41 transitions break (one per +1 stretch, each ending at a stop
+codon) and the remaining 81 match letter for letter. One inconsistency
+(\texttt{PPDSPLCTPGTGSGSAI} against \texttt{LCTPPGTGSGSAIAW}, one \texttt{P}
+apart) is present in the published table and was left uncorrected.
+
+\subsection{Parameters}
+
+Six DIAMOND part databases covering about 1.18 billion sequences, built the
+day of the run, NCBI state 23 Nov 2026. \texttt{-{}-dbsize} is set to the sum
+over all parts so that E-values match a whole-nr search. Sensitivity is the
+DIAMOND default, \texttt{-{}-evalue 1000},
+\texttt{-{}-max-target-seqs 50}, 20 threads. The loose threshold is required
+because peptides of 8--27\,aa score low; exactness is enforced afterwards,
+counting only alignments with \texttt{pident} $= 100$ \emph{and}
+\texttt{length} $=$ \texttt{qlen}.
+
+As a sensitivity control, \texttt{p1\_mammalia} was repeated with
+\texttt{-{}-ultra-sensitive -{}-masking 0 -{}-comp-based-stats 0}: 457\,s
+instead of 18\,s, same result for the spike peptides.
+
+\subsection{Wall clock}
+
+@@runtime_table@@
+
+Total @@total_runtime@@ for @@n_all@@ peptides against 1.18 billion sequences.
+Run time follows part-database size, not hit count: DIAMOND reads the block
+index linearly.
+
+\subsection{Result}
+
+@@n_raw@@ raw HSPs; after the exactness filter @@n_exact@@ rows remain, joined
+against the local metadata tables:
+
+\footnotesize
+@@meta_table@@
+\normalsize
+
+Three observations. The positive control is recovered, so the negative result
+for the spike peptides is meaningful. The MS-identified ``+1FS'' reporter
+peptides are recovered too, which is by construction rather than a
+contradiction: in Fluc+1FS the luciferase C terminus is deliberately placed in
+the +1 frame, so a slip produces genuine luciferase sequence, which is why
+enzyme activity returns. And none of the @@n_fs@@ spike peptides is found.
+
+A side observation on database hygiene: those hits land not only on the
+expected vector-derived record (one OID carrying 196 deflines, from
+\texttt{pGL3}, \texttt{pGL4} and similar) but also on entries annotated as
+genuine bacterial proteins -- \texttt{MBU6082087.1} \emph{Allobacillus
+halotolerans}, \texttt{WP\_514138070.1} \emph{Streptococcus intermedius},
+\texttt{WP\_125392797.1} \emph{Streptococcus gordonii}, all titled
+``AMP-binding protein''. A 27\,aa peptide matching at 100\,\% is not chance;
+this is vector sequence that entered those assemblies, and the title is
+plausible because luciferase belongs to the acyl-CoA synthetase family.
+
+A limit worth stating: DIAMOND is seed-and-extend and misses very short
+queries. Control peptides \texttt{YGLNTNHR} (8\,aa), \texttt{KLPIIQK} and
+\texttt{IIIMDSK} (7\,aa) were \emph{not} found although they are certainly in
+nr. Among the spike peptides this affects at most three (two 8-mers and one
+9-mer); the other 120 are $\geq 12$\,aa.
+
+\section{Clustering against the human proteome}
+\label{sec:cluster}
+
+Exact search only answers identity. Whether a peptide is \emph{related} enough
+to a human protein to group with it is a clustering question. Our daily nr
+clustering compares new sequences only with each other; these peptides are in
+no nr release, so that run would never touch them. The counterpart was
+therefore restricted to \emph{Homo sapiens} (taxid 9606, 2\,285\,891
+sequences), two levels at 90\,\% and 50\,\% identity.
+
+One parameter had to change. The daily run uses \texttt{-{}-cov-mode 1}
+(coverage of the target), under which a 15\,aa peptide can never join a
+550\,aa protein because 80\,\% of the protein would have to be covered. With
+\texttt{-{}-cov-mode 2} (coverage of the shorter sequence) a peptide can
+become a member at all; otherwise every peptide would be a singleton by
+construction.
+
+@@cluster_section@@
+
+\section{The closest thing nr has}
+\label{sec:aehnlich}
+
+Ranking the raw HSPs by bitscore answers the softer question. Of the 123 spike
+peptides, \textbf{eight} have any hit at all, and the best five belong
+together:
+
+\begin{center}
+\footnotesize
+\begin{tabular}{llrrrl}
+\toprule
+peptide & coverage & identity & bits & E-value & subject \\
+\midrule
+\texttt{fs116} & 17/18 & 94.1\,\% & 42.0 & 4.5e--03 & \texttt{AAG23172.1} \emph{Homo sapiens} \\
+\texttt{fs119} & 17/18 & 100\,\% & 41.6 & 6.4e--03 & \texttt{AAG23172.1} \emph{Homo sapiens} \\
+\texttt{fs118} & 17/17 & 88.2\,\% & 39.3 & 4.8e--02 & \texttt{AAG23172.1} \emph{Homo sapiens} \\
+\texttt{fs117} & 16/17 & 93.8\,\% & 37.4 & 2.7e--01 & \texttt{AAG23172.1} \emph{Homo sapiens} \\
+\texttt{fs120} & 15/18 & 100\,\% & 35.4 & 1.5e+00 & \texttt{AAG23172.1} \emph{Homo sapiens} \\
+\midrule
+\texttt{fs082} & 15/15 & 66.7\,\% & 28.9 & 5.0e+02 & \texttt{KAF9461180.1} \emph{Collybia nuda} \\
+\texttt{fs025} & 18/18 & 50.0\,\% & 28.5 & 8.1e+02 & \texttt{CEM26774.1} \emph{Chromera velia} \\
+\texttt{fs006} & 15/15 & 66.7\,\% & 28.1 & 9.2e+02 & \texttt{KAF2594081.1} \emph{Brassica cretica} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The bottom three are noise at E-values of 500 to 900. The top five are not.
+\texttt{fs116} to \texttt{fs120} are five consecutive, overlapping pool
+members; chained on their overlaps they give 50 contiguous residues:
+
+\begin{center}
+\texttt{SSWYCMHAMLAAPFPSWVPRVSPDLGSQVCSHLHLPHSPPLLVPDTSQAR}
+\end{center}
+
+Aligned without gaps against \texttt{AAG23172.1} (\emph{Homo sapiens},
+103\,aa, gene \texttt{PP2150}, product simply ``unknown''):
+
+\begin{lstlisting}
+ +1                                       SSWYCMHAMLAAPFPSWVPRVSPD
+                                           | |||||||||||||||| |||||
+AAG   MGDQVPREQDLAKRSSPGPSPVLNMCNRQSAWATALSPWYCMHAMLAAPFPSWAPRVSPD
+
+ +1   LGSQVCSHLHLPHSPPLLVPDTSQAR
+        ||||||||||||||||||||||
+AAG   PGSQVCSHLHLPHSPPLLVPDTSTPTWSSPIAHKRGGTRDELS
+\end{lstlisting}
+
+\textbf{44 of 50 residues identical, 88\,\%.} Against 1.18 billion sequences
+that is not chance.
+
+\subsection{Resolution: this is not spike}
+
+\texttt{AAG23172.1} comes from \texttt{AF269289.1}, a 1035\,bp ``Homo sapiens
+PP2150 mRNA'' submitted in May 2000, unpublished, product ``unknown'', with
+the note \emph{``Method: conceptual translation supplied by author''} -- the
+protein is itself only a guessed reading frame.
+
+The nucleotides decide the matter. The 150\,bp of \texttt{AF269289.1} encoding
+the matching stretch (nt 665--814) are \textbf{150/150 identical} to the human
+\emph{TLE5} (formerly \emph{AES}) mRNA \texttt{NM\_198969.1} from position
+1216, within its 3' untranslated region. The 3' UTR of BNT162b2 is built from
+human parts: the 3' UTR of \emph{AES/TLE5} together with an element of
+mitochondrial 12S rRNA (\emph{mtRNR1}). Both are verified directly in the
+cassette below.
+
+\subsection{Check against the construct}
+
+We did not leave this at plausibility. GenBank holds the cassette as
+\texttt{PP544446} (``Vector BNT162b2 clone Vacc\_Batch\_FP9359'', 7692\,bp,
+deposited 2024); its spike CDS at nt 3578--7399 translates correctly to
+\texttt{MFVFLVLLPLVS...KLHYT*}. Searching every peptide in the +1 frame
+\emph{relative to the start codon} places them as follows:
+
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+position in the cassette & peptides \\
+\midrule
+inside the spike CDS & 113 \\
+\textbf{3' UTR, past the spike stop codon} & \textbf{7} \\
+5' UTR, upstream of the start codon & 1 \\
+\midrule
+recovered exactly & 121 of 123 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The seven downstream peptides are \texttt{fs116} to \texttt{fs122}, staggered
+from +5 to +215\,nt past the spike stop; the upstream one is \texttt{fs001}.
+Finally the 3' region itself. Mapping the 293\,nt following the stop codon
+onto the two candidate sources resolves it completely:
+
+\begin{center}
+\begin{tabular}{llr}
+\toprule
+3' region & source & exact match \\
+\midrule
+nt 10--56 & \emph{TLE5}/\emph{AES} \texttt{NM\_198969.1} from 1221 & 47\,nt \\
+nt 79--145 & \emph{TLE5}/\emph{AES} \texttt{NM\_198969.1} from 1290 & 67\,nt \\
+nt 146--284 & mtRNR1 \texttt{NC\_012920.1} from 112 & 139\,nt \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Both human elements are therefore demonstrated directly in the cassette rather
+than merely cited: the \emph{AES} element first, the mitochondrial 12S element
+behind it. The gaps between the blocks correspond to the modifications in the
+construct.
+
+Placing the seven downstream peptides on this map assigns each to its source:
+\texttt{fs116} (+5\,nt) through \texttt{fs120} (+101\,nt) fall in the
+\emph{AES} part, which is why they match the \emph{AES}-derived entry
+\texttt{AAG23172.1}; \texttt{fs121} (+125\,nt) straddles the junction, and
+\texttt{fs122} (+215\,nt) lies in the mitochondrial element. The eighth
+peptide, \texttt{fs001}, is upstream in the 5' UTR.
+
+The chain is closed at every link: \texttt{fs116}--\texttt{fs122} sit past the
+spike stop $\rightarrow$ the human \emph{AES/TLE5} element is there
+$\rightarrow$ its +1 translation is 88\,\% identical to a human GenBank entry
+whose coding nucleotides are in turn 150/150 from \emph{TLE5}.
+
+\subsection{Transcription accuracy}
+
+The construct check also validates the transcription: 121 of 123 peptides were
+recovered letter for letter. \texttt{fs007}, \texttt{fs008}, \texttt{fs039}
+and \texttt{fs123} each differ by a single residue (longest present fragment
+11 to 15\,aa). For \texttt{fs039} this is the inconsistency already present in
+the published table: \texttt{PGTGSGSAIAW} is in the construct, while
+\texttt{LCTPPGTGSGSAIAW} is printed, one \texttt{P} too many. The other three
+are most likely our own reading errors from the table image. None affects the
+result: all four belong to the spike group, which has no hits either way.
+
+\subsection{What follows}
+
+\begin{itemize}
+\item \textbf{Far from spike: necessarily so.} A frame shifted by one base
+      shares no residue with the original protein; the same nucleotides
+      regrouped give entirely different codons. That is arithmetic, not an
+      observation.
+\item \textbf{Novel: true for 115 of the 123 peptides.} They occur nowhere in
+      1.18 billion sequences, not even distantly.
+\item \textbf{Far from anything human: not throughout.} Eight peptides do not
+      derive from the spike reading frame; seven of them translate the human
+      3' UTR element. The ribosome is not inventing anything there, it is
+      simply reading on.
+\end{itemize}
+
+\subsection{Amino-acid composition}
+
+Across all 123 peptides (1983 residues), S, P, T, A and C account for
+\textbf{64\,\%} of residues against roughly 30\,\% in ordinary proteomes.
+Cysteine (7.3\,\%) and tryptophan (4.7\,\%) are about threefold enriched,
+while aspartate and glutamate together fall to 2.4\,\% and tyrosine is
+effectively absent (3 of 1983). This is low-complexity, proline- and
+cysteine-rich sequence, the unavoidable consequence of reading a GC-rich
+codon-optimised gene one base out of frame. Such sequence folds poorly and has
+no natural counterpart, which makes the empty database result unsurprising in
+hindsight.
+
+\section{What this adds, and what it does not}
+
+The added value over the publication is small and we would rather not oversell
+it. The authors performed the database comparison themselves (Extended Data
+Fig.~4). What is new here: a different tool against a much larger and current
+reference (the whole of nr rather than two sequences compared pairwise); a
+machine-checkable criterion instead of an alignment figure; a positive control,
+which the paper does not carry; the clustering question; disclosed commands
+and run times; and the 3' UTR observation. On that last point the paper's full
+text contains no occurrence of \texttt{untranslated}, \texttt{UTR},
+\texttt{AES}, \texttt{TLE5}, \texttt{mtRNR} or \texttt{12S}, so we believe
+it is not discussed -- though the Methods do say the pool covers the +1 frame
+of ``the BNT162b2 mRNA'', not of the spike CDS, so the coverage may well have
+been deliberate.
+
+What this does \emph{not} add: no new biology, no statement about risk or
+tolerability, no measurement of the frameshifting rate, no clinical
+interpretation. The expected negative result is confirmed. The contribution is
+checkability rather than insight.
+
+\section{Peptide list: +1FS spike (Extended Data Table 3)}
+
+\footnotesize
+@@peptides@@
+\normalsize
+
+\section{Appendix A: the queries as executed}
+
+\subsection*{A.1 Invocation}
+
+\begin{lstlisting}
+fs_peptide_search.py fs_all.fa out_dir --mode fast
+\end{lstlisting}
+
+\subsection*{A.2 The DIAMOND query, once per part database}
+
+\begin{lstlisting}
+diamond blastp \
+  -d parts/<part>.dmnd -q fs_all.fa -o <out_dir>/<part>.tsv \
+  --outfmt 6 qseqid sseqid pident length qlen slen qstart qend \
+             sstart send evalue bitscore staxids \
+  --evalue 1000 --max-target-seqs 50 \
+  --threads 20 --block-size 2 --index-chunks 1 \
+  --dbsize @@dbsize@@
+\end{lstlisting}
+
+\texttt{-{}-dbsize} is the letter count over all six parts:
+
+\begin{lstlisting}
+SELECT SUM(letters) FROM blast_part;
+\end{lstlisting}
+
+The sensitivity control used the same fields but
+\texttt{-{}-ultra-sensitive -{}-masking 0 -{}-comp-based-stats 0
+-{}-evalue 10000}.
+
+\subsection*{A.3 Timing and exactness filter}
+
+\begin{lstlisting}
+t0 = time.monotonic(); p = subprocess.run(cmd); dt = time.monotonic() - t0
+
+if float(c[2]) == 100.0 and int(c[3]) == int(c[4]):   # pident, length == qlen
+\end{lstlisting}
+
+\subsection*{A.4 Metadata join}
+
+\begin{lstlisting}
+SELECT a.acc, a.taxid, s.len, s.title, t.name, t.rank
+  FROM blast_acc  a
+  JOIN blast_seq  s ON s.oid   = a.oid
+  LEFT JOIN blast_taxon t ON t.taxid = a.taxid
+ WHERE a.acc IN (%s, %s, ...);
+\end{lstlisting}
+
+One row per defline, so a summarised record carries many accessions and taxa
+per OID; the \texttt{staxids} DIAMOND reports may differ from the taxid joined
+here. For the luciferase record that OID carries 196 deflines.
+
+\section{Appendix B: full reproduction}
+
+Only \texttt{curl}, \texttt{python3}, \texttt{pdflatex}, DIAMOND, MMseqs2 and
+access to nr are needed. Scripts are in
+\texttt{github.com/gerontec/blastDiamond}, under
+\texttt{examples/frameshift\_m1psi/}.
+
+\subsection*{B.1 Fetch the sources}
+
+\begin{lstlisting}
+curl -o pmc.xml "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi\
+?db=pmc&id=10764286&rettype=xml"
+
+B=https://media.springernature.com/full/springer-static/esm/\
+art%3A10.1038%2Fs41586-023-06800-3/MediaObjects
+curl -o Tab3.jpg "$B/41586_2023_6800_Tab3_ESM.jpg"   # 1398x2521
+curl -o Tab1.jpg "$B/41586_2023_6800_Tab1_ESM.jpg"   # 2126x1065
+\end{lstlisting}
+
+Both tables are raster images only, so the peptides had to be read off them.
+Columns were enlarged individually:
+
+\begin{lstlisting}
+convert Tab3.jpg -crop 380x830+618+1690 +repage -resize 300% c3.png
+convert Tab3.jpg -crop 420x880+978+0    +repage -resize 300% c4a.png
+convert Tab3.jpg -crop 420x880+978+860  +repage -resize 300% c4b.png
+\end{lstlisting}
+
+\subsection*{B.2 Validate the transcription first}
+
+\begin{lstlisting}
+check_overlap.py    # 123 peptides, 8-18 aa, no duplicates, 41 breaks
+                    # (= 42 +1 stretches), 81 transitions match exactly
+\end{lstlisting}
+
+\subsection*{B.3 Build the query file}
+
+\begin{lstlisting}
+{ awk '{printf ">fs%03d_spike1FSpred\n%s\n",         NR, $0}' fs_peptides.txt
+  awk '{printf ">ms%02d_fluc1FS_msproven\n%s\n",     NR, $0}' set2.txt
+  awk '{printf ">ct%02d_fluc_inframe_control\n%s\n", NR, $0}' set3.txt
+} > fs_all.fa       # 123 + 9 + 6 = 138
+\end{lstlisting}
+
+\subsection*{B.4 Search and clustering}
+
+\begin{lstlisting}
+fs_peptide_search.py  fs_all.fa out_dir    --mode fast
+fs_peptide_search.py  fs_all.fa out_ultra  --mode ultra p1_mammalia
+fs_peptide_cluster.py fs_all.fa cluster_out --taxid 9606 --threads 20
+best_hits.py          out_dir
+\end{lstlisting}
+
+\subsection*{B.5 Resolve the striking hit}
+
+\begin{lstlisting}
+curl -o aag.gp "...efetch.fcgi?db=protein&id=AAG23172.1&rettype=gp"
+#   -> 103 aa, gene PP2150, "unknown", coded_by AF269289.1:557..868
+curl -o af269289.gb "...efetch.fcgi?db=nuccore&id=AF269289.1&rettype=gb"
+align_aag.py   # 50 aa, best ungapped offset 36: 44/50 = 88 %
+curl -o tle5.fna "...efetch.fcgi?db=nuccore&id=2462563547,39812018&rettype=fasta"
+test_aes.py    # NM_198969.1: 150 of 150 nt identical from position 1216
+\end{lstlisting}
+
+Note: \texttt{NM\_005938} is \emph{not} AES but FOXO4. The correct accession
+comes from \texttt{esearch.fcgi?db=nuccore\&term=TLE5[gene]+AND+"Homo
+sapiens"[orgn]+AND+biomol\_mrna[prop]+AND+srcdb\_refseq[prop]}.
+
+\subsection*{B.6 Check against the construct}
+
+\begin{lstlisting}
+curl -o bnt.gb "...efetch.fcgi?db=nuccore&id=PP544446&rettype=gb"
+verify_utr.py  # spike CDS 3578..7399, +1 frame from the start codon
+               # 113 peptides in the CDS, 7 in the 3' UTR, 1 in the 5' UTR
+\end{lstlisting}
+
+Two pitfalls that cost time when rebuilding this:
+
+\begin{enumerate}
+\item When reading the GenBank \texttt{ORIGIN} block, keep \emph{all} letters,
+      not only \texttt{ACGTN}. Filtering out IUPAC ambiguity codes loses five
+      bases here (7687 instead of 7692\,bp) and shifts the frame; the CDS then
+      translates to \texttt{SCSWCCCLWCPA...} instead of
+      \texttt{MFVFLVLLPLVS...}, which is easy to miss because it looks like a
+      +1 product.
+\item The relevant +1 frame is the one shifted against the \emph{start codon},
+      not against the start of the vector. With the wrong reference point,
+      none of the 123 peptides is found.
+\end{enumerate}
+
+\subsection*{B.7 Composition and report}
+
+\begin{lstlisting}
+composition.py     # S+P+T+A+C = 64 % of residues
+fs_report_pdf.py out_dir fs_all.fa Frameshift.pdf cluster_out --lang en
+\end{lstlisting}
+
+\subsection*{B.8 Accessions used}
+
+\begin{center}
+\footnotesize
+\begin{tabular}{lll}
+\toprule
+accession & what & used for \\
+\midrule
+PMC10764286 / PMID 38057663 & Mulroney et al., Nature 625 & source \\
+PMID 38867495 & Boros et al., review & claimed follow-up \\
+\texttt{PP544446} & BNT162b2 cassette, 7692\,bp & construct check \\
+\texttt{AAG23172.1} / \texttt{AF269289.1} & PP2150, ``unknown'' & best hit \\
+\texttt{NM\_198969.1} & TLE5 / AES mRNA & origin of the 3' UTR \\
+\texttt{NC\_012920.1}:648--1601 & mtRNR1 / 12S & second UTR element \\
+\texttt{MSV000093074}, \texttt{GSE223044} & MS and RNA-seq data & deposition \\
+\texttt{P08659} & firefly luciferase & positive control \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\end{document}
